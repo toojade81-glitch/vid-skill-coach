@@ -211,7 +211,7 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       });
 
       const duration = video.duration || 0;
-      const frameStep = duration / 48; // Sample ~48 frames
+      const frameStep = Math.max(duration / 32, 0.5); // Reduce frames for better performance
       let totalFrames = 0;
       let detectedFrames = 0;
       const rubricFrames: RubricFrames = {};
@@ -221,23 +221,39 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         ? ['readyFootwork', 'handShapeContact', 'alignmentExtension', 'followThroughControl']
         : ['readyPlatform', 'contactAngle', 'legDriveShoulder'];
 
-      // Progress tracking
-      const progressInterval = setInterval(() => {
-        setProgress(prev => Math.min(90, prev + 2));
-      }, 200);
+      console.log(`🎬 Analyzing ${duration.toFixed(1)}s video with ${Math.ceil(duration / frameStep)} frames`);
 
-      // Analyze frames
+      // Set overall timeout for analysis
+      const analysisTimeout = setTimeout(() => {
+        console.error("⏰ Analysis timeout after 30 seconds");
+        throw new Error("Analysis timed out");
+      }, 30000);
+
+      // Analyze frames with proper error handling
       for (let time = 0; time < duration; time += frameStep) {
-        video.currentTime = time;
-        await new Promise((resolve) => {
-          video.onseeked = resolve;
-        });
-
         try {
-          const poses = await detector.estimatePoses(video, {
-            maxPoses: 1,
-            flipHorizontal: false
-          });
+          // Set video time with timeout
+          video.currentTime = Math.min(time, duration - 0.1);
+          
+          await Promise.race([
+            new Promise((resolve) => {
+              video.onseeked = resolve;
+            }),
+            new Promise((_, reject) => {
+              setTimeout(() => reject(new Error("Frame seek timeout")), 2000);
+            })
+          ]);
+
+          // Estimate poses with timeout
+          const poses = await Promise.race([
+            detector.estimatePoses(video, {
+              maxPoses: 1,
+              flipHorizontal: false
+            }),
+            new Promise((_, reject) => {
+              setTimeout(() => reject(new Error("Pose detection timeout")), 3000);
+            })
+          ]) as any[];
 
           totalFrames++;
           const timePercent = time / duration;
@@ -255,18 +271,22 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
             }
           }
 
-          // Update progress
-          const currentProgress = (time / duration) * 90;
+          // Update progress more accurately
+          const currentProgress = Math.min(95, (time / duration) * 95);
           setProgress(currentProgress);
 
-        } catch (poseError) {
-          console.warn("⚠️ Pose detection failed for frame at", time, ":", poseError);
+        } catch (frameError) {
+          console.warn(`⚠️ Skipping frame at ${time.toFixed(1)}s:`, frameError.message);
           totalFrames++;
+          // Continue with next frame instead of failing
         }
       }
 
-      clearInterval(progressInterval);
+      // Clear timeout if we made it this far
+      clearTimeout(analysisTimeout);
       setProgress(100);
+
+      console.log(`✅ Frame analysis complete: ${detectedFrames}/${totalFrames} frames`);
 
       // Clean up
       URL.revokeObjectURL(video.src);
@@ -338,6 +358,7 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground">
             Running MoveNet pose analysis... ({Math.round(progress)}%)
+            {progress > 90 && " - Processing results..."}
           </p>
           <Progress value={progress} className="w-full" />
         </div>
@@ -357,8 +378,13 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
           Status: {status}
         </div>
         <div className="text-green-800">
-          Using TensorFlow.js MoveNet Lightning for real-time pose detection.
+          Using TensorFlow.js MoveNet Lightning for reliable pose detection.
         </div>
+        {isAnalyzing && (
+          <div className="text-blue-600 mt-1">
+            ⚡ Processing with timeouts to prevent hanging...
+          </div>
+        )}
         {!isReady && (
           <div className="text-red-600 mt-1">
             ⚠️ MoveNet not ready. Please refresh if libraries failed to load.
