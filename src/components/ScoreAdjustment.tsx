@@ -7,7 +7,7 @@ import { Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 
 interface ScoreAdjustmentProps {
-  skill: "Setting" | "Digging";
+  skill: string;
   autoScores: Record<string, number>;
   onScoreChange: (scores: Record<string, number>) => void;
   rubricFrames?: Record<string, string>;
@@ -96,7 +96,11 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {} }
   const [scores, setScores] = useState<Record<string, number>>(autoScores);
   const [copied, setCopied] = useState(false);
 
-  const criteria = SKILL_CRITERIA[skill];
+  const criteria = SKILL_CRITERIA[skill as keyof typeof SKILL_CRITERIA];
+  
+  if (!criteria) {
+    return <div>Skill "{skill}" not supported yet.</div>;
+  }
 
   useEffect(() => {
     setScores(autoScores);
