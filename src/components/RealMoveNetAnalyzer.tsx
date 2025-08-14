@@ -146,7 +146,7 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       }
       
       // Follow-through: later in video
-      if (timePercent > 0.6) {
+      if (timePercent > 0.65) {
         return 'followThroughControl';
       }
       
@@ -383,7 +383,7 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       // Track which rubric components we've captured
       const neededComponents = skill === 'Setting' 
         ? ['readyFootwork', 'handShapeContact', 'alignmentExtension', 'followThroughControl']
-        : ['readyPlatform', 'contactAngle', 'legDriveShoulder'];
+        : ['readyPlatform', 'contactAngle', 'legDriveShoulder', 'followThroughControl'];
 
       console.log(`🎬 Analyzing ${duration.toFixed(1)}s video with ${Math.ceil(duration / frameStep)} frames`);
 
