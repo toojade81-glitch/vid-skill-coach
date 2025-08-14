@@ -122,6 +122,11 @@ const NewAttempt = () => {
   };
 
   const startRecording = () => {
+    console.log("🔴 startRecording called");
+    console.log("📹 Stream available:", !!stream);
+    console.log("🎥 Video ref available:", !!videoRef.current);
+    console.log("📱 Video ref playing:", !videoRef.current?.paused);
+    
     if (!stream) {
       console.error("❌ No stream available for recording");
       toast.error("Camera not available for recording");
@@ -129,24 +134,32 @@ const NewAttempt = () => {
     }
 
     console.log("🔴 Starting recording...");
-    console.log("📹 Stream active tracks:", stream.getVideoTracks().map(t => t.readyState));
+    console.log("📹 Stream active tracks:", stream.getVideoTracks().map(t => ({ 
+      id: t.id, 
+      readyState: t.readyState,
+      enabled: t.enabled 
+    })));
     
     const mediaRecorder = new MediaRecorder(stream);
     const chunks: BlobPart[] = [];
     
     mediaRecorder.ondataavailable = (e) => {
-      console.log("📦 Recording data chunk received");
+      console.log("📦 Recording data chunk received, size:", e.data.size);
       chunks.push(e.data);
     };
     
     mediaRecorder.onstop = () => {
       console.log("⏹️ Recording stopped, creating video file...");
+      console.log("📦 Total chunks:", chunks.length);
       const blob = new Blob(chunks, { type: 'video/webm' });
+      console.log("📁 Blob created, size:", blob.size);
       const file = new File([blob], 'recording.webm', { type: 'video/webm' });
+      console.log("📄 File created:", file.name, file.size);
       setVideoFile(file);
       setIsRecording(false);
       // Keep camera stream active for continued viewfinder
       console.log("✅ Video file created, moving to analysis");
+      console.log("📹 Stream still active:", stream.getVideoTracks().map(t => t.readyState));
       setStep("analyze");
     };
 
@@ -163,6 +176,7 @@ const NewAttempt = () => {
       mediaRecorder.start();
       console.log("▶️ MediaRecorder started successfully");
       console.log("📹 Video element playing state:", !videoRef.current?.paused);
+      console.log("🎬 Video element srcObject:", !!videoRef.current?.srcObject);
       
       // Stop recording after 10 seconds
       setTimeout(() => {

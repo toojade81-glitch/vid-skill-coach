@@ -54,7 +54,12 @@ const PoseAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: PoseAnal
   };
 
   const analyzeVideo = async () => {
+    console.log("🔍 Starting video analysis...");
+    console.log("📹 Video file:", videoFile?.name, videoFile?.size);
+    console.log("🎬 Video ref:", videoRef.current);
+    
     if (!videoFile || !videoRef.current) {
+      console.error("❌ Missing video file or video ref");
       toast.error("Missing video file for analysis");
       return;
     }
@@ -66,40 +71,77 @@ const PoseAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: PoseAnal
       const video = videoRef.current;
       
       // Set up video
+      console.log("📂 Creating object URL for video...");
       video.src = URL.createObjectURL(videoFile);
-      await new Promise((resolve) => {
-        video.onloadedmetadata = resolve;
+      
+      console.log("⏳ Waiting for video metadata...");
+      await new Promise((resolve, reject) => {
+        video.onloadedmetadata = () => {
+          console.log("✅ Video metadata loaded");
+          console.log("📊 Video dimensions:", video.videoWidth, "x", video.videoHeight);
+          console.log("⏱️ Video duration:", video.duration, "seconds");
+          resolve(undefined);
+        };
+        video.onerror = (e) => {
+          console.error("❌ Video loading error:", e);
+          reject(new Error("Failed to load video"));
+        };
+        
+        // Timeout after 10 seconds
+        setTimeout(() => {
+          reject(new Error("Video loading timeout"));
+        }, 10000);
       });
 
       // Simulate analysis progress
+      console.log("📈 Starting analysis progress simulation...");
       for (let i = 0; i <= 90; i += 10) {
         setProgress(i);
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
       // Capture frame at mid-point of video for pose reference
+      console.log("🎯 Capturing frame for pose reference...");
       const duration = video.duration;
       const captureTime = duration * 0.5; // Middle of video
+      console.log("⏰ Seeking to time:", captureTime);
       video.currentTime = captureTime;
       
-      await new Promise((resolve) => {
-        video.onseeked = resolve;
+      await new Promise((resolve, reject) => {
+        video.onseeked = () => {
+          console.log("✅ Video seeked successfully");
+          resolve(undefined);
+        };
+        video.onerror = (e) => {
+          console.error("❌ Video seek error:", e);
+          reject(new Error("Failed to seek video"));
+        };
+        
+        // Timeout after 5 seconds
+        setTimeout(() => {
+          reject(new Error("Video seek timeout"));
+        }, 5000);
       });
 
+      console.log("📸 Capturing video frame...");
       const capturedFrame = captureVideoFrame(video);
+      console.log("🖼️ Frame captured, length:", capturedFrame.length);
+      
       setProgress(100);
       await new Promise(resolve => setTimeout(resolve, 200));
 
       // Generate simulated but realistic metrics based on skill type
+      console.log("🧮 Generating metrics and scores...");
       const metrics = generateSimulatedMetrics(skill, target);
       const scores = calculateScores(metrics, skill);
       const confidence = generateRealisticConfidence(skill);
 
+      console.log("📊 Analysis complete:", { metrics, scores, confidence });
       onAnalysisComplete(metrics, scores, confidence, capturedFrame);
       toast.success("Analysis complete!");
     } catch (error) {
-      console.error("Analysis failed:", error);
-      toast.error("Analysis failed. Please try again.");
+      console.error("❌ Analysis failed:", error);
+      toast.error(`Analysis failed: ${error.message}`);
     } finally {
       setIsAnalyzing(false);
       setProgress(0);
