@@ -30,22 +30,7 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
       return;
     }
 
-    // Test the URL accessibility
-    fetch(videoUrl, { method: 'HEAD' })
-      .then(response => {
-        console.log("🌐 Video URL test:", {
-          status: response.status,
-          ok: response.ok,
-          contentType: response.headers.get('content-type')
-        });
-        if (!response.ok) {
-          setError(`Video URL not accessible (${response.status})`);
-        }
-      })
-      .catch(err => {
-        console.error("❌ Video URL test failed:", err);
-        setError("Video URL test failed");
-      });
+    // Removed HEAD request check which can incorrectly fail with 400 on some CDNs/CORS
   }, [videoUrl]);
 
   const handleVideoLoaded = () => {
@@ -148,11 +133,13 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
         <div className="mt-2">
           <div className="text-xs text-muted-foreground mb-1">Fallback player:</div>
           <video
+            key={videoUrl}
             controls
             className="w-full h-24 rounded border"
             src={videoUrl}
             playsInline
             muted
+            crossOrigin="anonymous"
           >
             Your browser does not support video playback.
           </video>
@@ -174,6 +161,7 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
 
         <div className="relative">
           <video
+            key={videoUrl}
             ref={videoRef}
             src={videoUrl}
             className="w-full h-32 object-cover rounded-lg border border-border"
@@ -188,6 +176,7 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
             playsInline
             controls={false}
             preload="metadata"
+            crossOrigin="anonymous"
           />
           <canvas ref={canvasRef} className="hidden" />
           
@@ -201,12 +190,14 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
         <div className="bg-gray-50 rounded-lg p-3">
           <div className="text-xs text-gray-600 mb-2">Direct player (should work immediately):</div>
           <video
+            key={videoUrl + ':fallback'}
             controls
             className="w-full h-24 rounded"
             src={videoUrl}
             preload="metadata"
             playsInline
             muted
+            crossOrigin="anonymous"
           >
             Your browser does not support video playback.
           </video>
@@ -223,6 +214,7 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
     <div className={`space-y-3 ${className}`}>
       <div className="relative">
         <video
+          key={videoUrl}
           ref={videoRef}
           src={videoUrl}
           className="w-full h-32 object-cover rounded-lg border border-border"
@@ -232,6 +224,7 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
           muted
           playsInline
           controls={false}
+          crossOrigin="anonymous"
         />
         <canvas ref={canvasRef} className="hidden" />
         <Button
