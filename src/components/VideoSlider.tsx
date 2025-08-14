@@ -13,6 +13,7 @@ interface VideoSliderProps {
 const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 0 }: VideoSliderProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [videoSrc, setVideoSrc] = useState<string>("");
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(initialTime);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -32,6 +33,7 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
       console.log("❌ No video file provided to VideoSlider");
       setError("No video file provided");
       setIsLoading(false);
+      setVideoSrc("");
       return;
     }
 
@@ -50,17 +52,9 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
       const videoUrl = URL.createObjectURL(videoFile);
       console.log("🔗 Created video URL successfully:", videoUrl);
 
-      const video = videoRef.current;
-      if (video) {
-        console.log("📺 Setting video src and loading...");
-        video.src = videoUrl;
-        video.load(); // Force reload
-        console.log("✅ Video element configured with src:", video.src);
-      } else {
-        console.error("❌ Video ref is null!");
-        setError("Video element not available");
-        setIsLoading(false);
-      }
+      // Set the video src - React will handle setting it on the video element
+      setVideoSrc(videoUrl);
+      console.log("✅ Video src state updated");
 
       // Cleanup function
       return () => {
@@ -82,7 +76,8 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
       readyState: video?.readyState,
       videoWidth: video?.videoWidth,
       videoHeight: video?.videoHeight,
-      src: video?.src
+      src: video?.src,
+      videoSrcState: videoSrc
     });
     
     if (video && video.duration && video.duration > 0) {
@@ -107,6 +102,14 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
         duration: video?.duration,
         readyState: video?.readyState
       });
+      // Try again after a short delay
+      setTimeout(() => {
+        if (video && video.duration > 0) {
+          console.log("✅ Video ready after delay");
+          setDuration(video.duration);
+          setIsLoading(false);
+        }
+      }, 100);
     }
   };
 
@@ -204,7 +207,7 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
           <video
             controls
             className="w-full h-24 rounded border"
-            src={videoFile ? URL.createObjectURL(videoFile) : ''}
+            src={videoSrc || (videoFile ? URL.createObjectURL(videoFile) : '')}
             playsInline
             muted
           >
@@ -231,12 +234,21 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
       <div className="relative">
         <video
           ref={videoRef}
+          src={videoSrc}
           className="w-full h-32 object-cover rounded-lg border border-border"
           onLoadedMetadata={handleVideoLoaded}
+          onLoadedData={handleVideoLoaded}
+          onCanPlay={handleVideoLoaded}
           onError={handleVideoError}
           onTimeUpdate={handleTimeUpdate}
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
+          onPlay={() => {
+            console.log("▶️ Video play event");
+            setIsPlaying(true);
+          }}
+          onPause={() => {
+            console.log("⏸️ Video pause event");
+            setIsPlaying(false);
+          }}
           muted
           playsInline
           preload="metadata"
