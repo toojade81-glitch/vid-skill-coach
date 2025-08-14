@@ -206,8 +206,8 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         const avgHipHeight = ((leftHip.y + rightHip.y) / 2);
         const kneeBend = avgHipHeight - avgKneeHeight;
         
-        if (stanceWidth > 50 && kneeBend > 30) score += 1; // Good stance
-        if (kneeBend > 50) score += 1; // Excellent knee bend
+        if (stanceWidth > 60 && kneeBend > 40) score += 1; // Good stance
+        if (kneeBend > 70 && stanceWidth > 80) score += 1; // Excellent knee bend and stance
       }
       
       else if (poseType === 'handShapeContact') {
@@ -217,8 +217,8 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         const handDistance = leftWrist && rightWrist ? 
           Math.abs(leftWrist.x - rightWrist.x) : 0;
         
-        if (handsAboveShoulders) score += 1;
-        if (handDistance > 20 && handDistance < 80) score += 1; // Good triangle width
+        if (handsAboveShoulders && handDistance > 30) score += 1; // Must have hands up AND proper width
+        if (handDistance > 40 && handDistance < 70) score += 1; // Stricter triangle width
       }
       
       else if (poseType === 'alignmentExtension') {
@@ -227,8 +227,8 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         const hipLevel = Math.abs(leftHip.y - rightHip.y);
         const bodyUpright = Math.abs((leftShoulder.x + rightShoulder.x) / 2 - (leftHip.x + rightHip.x) / 2);
         
-        if (shoulderLevel < 20 && hipLevel < 20) score += 1; // Level shoulders/hips
-        if (bodyUpright < 30) score += 1; // Upright posture
+        if (shoulderLevel < 15 && hipLevel < 15 && bodyUpright < 25) score += 1; // Stricter alignment
+        if (shoulderLevel < 10 && hipLevel < 10 && bodyUpright < 15) score += 1; // Excellent alignment
       }
       
       else if (poseType === 'followThroughControl') {
@@ -236,8 +236,8 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         const wristExtension = leftWrist && rightWrist && leftElbow && rightElbow ?
           (Math.abs(leftWrist.y - leftElbow.y) + Math.abs(rightWrist.y - rightElbow.y)) / 2 : 0;
         
-        if (wristExtension > 60) score += 1; // Good extension
-        if (wristExtension > 90) score += 1; // Excellent extension
+        if (wristExtension > 80) score += 1; // Good extension (stricter)
+        if (wristExtension > 110) score += 1; // Excellent extension
       }
     }
     
@@ -249,8 +249,8 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         const armsBelow = leftWrist && rightWrist && 
           leftWrist.y > leftShoulder.y && rightWrist.y > rightShoulder.y;
         
-        if (armsBelow) score += 1;
-        if (armLevel < 30) score += 1; // Level platform
+        if (armsBelow && armLevel < 25) score += 1; // Must have proper platform formation
+        if (armLevel < 15) score += 1; // Very level platform
       }
       
       else if (poseType === 'contactAngle') {
@@ -258,8 +258,8 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         const elbowExtension = leftElbow && rightElbow && leftWrist && rightWrist ?
           (Math.abs(leftWrist.x - leftElbow.x) + Math.abs(rightWrist.x - rightElbow.x)) / 2 : 0;
         
-        if (elbowExtension > 40) score += 1; // Extended arms
-        if (elbowExtension > 70) score += 1; // Fully extended
+        if (elbowExtension > 60) score += 1; // Extended arms (stricter)
+        if (elbowExtension > 90) score += 1; // Fully extended
       }
       
       else if (poseType === 'legDriveShoulder') {
@@ -268,8 +268,8 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         const avgHipHeight = (leftHip.y + rightHip.y) / 2;
         const kneeBend = avgHipHeight - avgKneeHeight;
         
-        if (kneeBend > 40) score += 1; // Good knee bend
-        if (kneeBend > 60) score += 1; // Excellent drive position
+        if (kneeBend > 50) score += 1; // Good knee bend (stricter)
+        if (kneeBend > 80) score += 1; // Excellent drive position
       }
     }
     
@@ -389,9 +389,9 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
 
       // Set overall timeout for analysis
       const analysisTimeout = setTimeout(() => {
-        console.error("⏰ Analysis timeout after 30 seconds");
-        throw new Error("Analysis timed out");
-      }, 30000);
+        console.error("⏰ Analysis timeout after 15 seconds");
+        throw new Error("Analysis timed out - please try again");
+      }, 15000);
 
       // Track pose quality scores for each component
       const componentScores: Record<string, number[]> = {};
@@ -410,7 +410,7 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
               video.onseeked = resolve;
             }),
             new Promise((_, reject) => {
-              setTimeout(() => reject(new Error("Frame seek timeout")), 2000);
+              setTimeout(() => reject(new Error("Frame seek timeout")), 1000);
             })
           ]);
 
@@ -421,7 +421,7 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
               flipHorizontal: false
             }),
             new Promise((_, reject) => {
-              setTimeout(() => reject(new Error("Pose detection timeout")), 3000);
+              setTimeout(() => reject(new Error("Pose detection timeout")), 2000);
             })
           ]) as any[];
 
@@ -527,27 +527,27 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       console.log(`  - Volleyball actions: ${volleyballActionFrames}/${detectedFrames} (${(actionRate * 100).toFixed(1)}%)`);
       console.log(`  - Real confidence: ${(confidence * 100).toFixed(1)}%`);
       
-      // Minimum confidence check - reject poor videos
-      if (confidence < 0.3 || volleyballActionFrames < 3 || avgMovement < 10) {
+      // Stricter minimum confidence check - reject poor videos
+      if (confidence < 0.4 || volleyballActionFrames < 5 || avgMovement < 15) {
         throw new Error(
           `Video quality insufficient for analysis:\n` +
-          `• Movement detected: ${avgMovement.toFixed(1)} pixels (need >10)\n` +
-          `• Volleyball actions: ${volleyballActionFrames} frames (need ≥3)\n` +
-          `• Overall confidence: ${(confidence * 100).toFixed(1)}% (need ≥30%)\n\n` +
-          `Please record a new video showing clear volleyball technique.`
+          `• Movement detected: ${avgMovement.toFixed(1)} pixels (need >15)\n` +
+          `• Volleyball actions: ${volleyballActionFrames} frames (need ≥5)\n` +
+          `• Overall confidence: ${(confidence * 100).toFixed(1)}% (need ≥40%)\n\n` +
+          `Please record a new video showing clear, dynamic volleyball technique.`
         );
       }
 
       console.log(`📊 Analysis complete: ${detectedFrames}/${totalFrames} frames detected (${(confidence * 100).toFixed(1)}%)`);
       
-      // Apply confidence penalty to scores for low-confidence analysis
+      // Apply stricter confidence penalty to scores
       allComponents.forEach(component => {
         if (!finalScores[component]) {
-          // Very low fallback score for no detected actions
+          // Zero score for no detected actions
           finalScores[component] = 0;
         } else {
-          // Apply confidence penalty
-          finalScores[component] = Math.floor(finalScores[component] * confidence);
+          // Apply stricter confidence penalty and round down
+          finalScores[component] = Math.floor(finalScores[component] * Math.min(confidence * 1.2, 1.0));
         }
       });
 
