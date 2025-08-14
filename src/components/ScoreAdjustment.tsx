@@ -114,16 +114,54 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, 
 
   return (
     <div className="space-y-6">
-      {videoFile && (
+      {/* Show AI captured frames from MoveNet first */}
+      {Object.keys(rubricFrames).length > 0 && (
         <Card className="p-4">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Manual Frame Selection for Assessment</CardTitle>
+            <CardTitle className="text-base">AI Captured Assessment Frames</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Scrub through the video below to find the best frame for each rubric component, then capture it for assessment.
+              These frames were automatically captured by AI during movement analysis
             </p>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {Object.entries(criteria).map(([componentKey, criterion]) => (
+                <div key={componentKey} className="space-y-2">
+                  <div className="text-sm font-medium">{criterion.name}</div>
+                  {rubricFrames[componentKey] ? (
+                    <div className="relative">
+                      <img 
+                        src={rubricFrames[componentKey]} 
+                        alt={`${criterion.name} AI frame`} 
+                        className="w-full h-32 object-cover rounded-lg border border-border"
+                      />
+                      <div className="absolute bottom-1 left-1 bg-black/70 text-white px-2 py-1 rounded text-xs">
+                        AI Captured
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-full h-32 bg-muted rounded-lg border border-dashed border-border flex items-center justify-center">
+                      <span className="text-xs text-muted-foreground">No frame captured</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Video scrubbers for manual frame selection below AI frames */}
+      {videoFile && (
+        <Card className="p-4">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Manual Frame Selection</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Scrub through the video to find and capture the best frames for each component assessment
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-6">
               {Object.entries(criteria).map(([componentKey, criterion]) => (
                 <VideoSlider
                   key={componentKey}
