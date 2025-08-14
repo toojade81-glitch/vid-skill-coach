@@ -87,6 +87,33 @@ export type Database = {
           },
         ]
       }
+      reference_videos: {
+        Row: {
+          file_name: string | null
+          file_size: number | null
+          id: string
+          skill: string
+          uploaded_at: string | null
+          video_url: string
+        }
+        Insert: {
+          file_name?: string | null
+          file_size?: number | null
+          id?: string
+          skill: string
+          uploaded_at?: string | null
+          video_url: string
+        }
+        Update: {
+          file_name?: string | null
+          file_size?: number | null
+          id?: string
+          skill?: string
+          uploaded_at?: string | null
+          video_url?: string
+        }
+        Relationships: []
+      }
       rubrics: {
         Row: {
           created_at: string

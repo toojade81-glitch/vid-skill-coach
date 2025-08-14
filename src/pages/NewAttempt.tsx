@@ -260,9 +260,12 @@ const NewAttempt = () => {
           <div className="space-y-4">
             <ReferenceVideoUpload
               skill={formData.skill}
-              existingVideoUrl={referenceVideoUrl}
-              onReferenceVideoUploaded={(url) => {
+              onReferenceVideoReady={(url) => {
                 setReferenceVideoUrl(url);
+                setStep("analyze");
+              }}
+              onSkip={() => {
+                setUseReferenceComparison(false);
                 setStep("analyze");
               }}
             />
@@ -274,13 +277,6 @@ const NewAttempt = () => {
                 className="flex-1"
               >
                 Back
-              </Button>
-              <Button
-                onClick={() => setStep("analyze")}
-                disabled={!referenceVideoUrl}
-                className="flex-1"
-              >
-                Continue to Upload Video
               </Button>
             </div>
           </div>

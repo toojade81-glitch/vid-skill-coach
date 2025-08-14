@@ -82,7 +82,7 @@ const ReferenceVideoAnalyzer: React.FC<ReferenceVideoAnalyzerProps> = ({
     }
   };
 
-  const analyzeVideoFrames = async (video: HTMLVideoElement): Promise<KeypointFrame[]> => {
+  const analyzeVideoFrames = async (video: HTMLVideoElement, maxFrames = 20): Promise<KeypointFrame[]> => {
     if (!detector) return [];
 
     const canvas = document.createElement('canvas');
@@ -93,11 +93,13 @@ const ReferenceVideoAnalyzer: React.FC<ReferenceVideoAnalyzerProps> = ({
     canvas.height = video.videoHeight || 480;
 
     const duration = video.duration;
-    const frameCount = Math.floor(duration * 10); // 10 FPS sampling
-    const frameInterval = duration / frameCount;
+    const targetFrames = Math.min(maxFrames, Math.floor(duration * 3)); // Max 3 FPS, limited by maxFrames
+    const frameInterval = duration / targetFrames;
     const frames: KeypointFrame[] = [];
 
-    for (let i = 0; i < frameCount; i++) {
+    console.log(`🎬 Analyzing ${targetFrames} frames from ${duration.toFixed(1)}s video`);
+
+    for (let i = 0; i < targetFrames; i++) {
       const time = i * frameInterval;
       
       video.currentTime = time;
@@ -108,6 +110,12 @@ const ReferenceVideoAnalyzer: React.FC<ReferenceVideoAnalyzerProps> = ({
           resolve(void 0);
         };
         video.addEventListener('seeked', onSeeked);
+        
+        // Add timeout for seeking
+        setTimeout(() => {
+          video.removeEventListener('seeked', onSeeked);
+          resolve(void 0);
+        }, 1000);
       });
 
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -165,7 +173,6 @@ const ReferenceVideoAnalyzer: React.FC<ReferenceVideoAnalyzerProps> = ({
 
     // Base movement analysis
     let movementQuality = 0;
-    let consistencyScore = 0;
 
     for (let i = 1; i < userFrames.length; i++) {
       const current = userFrames[i].keypoints;
@@ -225,6 +232,111 @@ const ReferenceVideoAnalyzer: React.FC<ReferenceVideoAnalyzerProps> = ({
     return scores;
   };
 
+  const performAnalysis = async () => {
+    if (!selectedFile || !videoRef.current) return;
+
+    // Setup user video
+    const url = URL.createObjectURL(selectedFile);
+    videoRef.current.src = url;
+    
+    await new Promise((resolve, reject) => {
+      const onLoadedMetadata = () => {
+        videoRef.current?.removeEventListener('loadedmetadata', onLoadedMetadata);
+        videoRef.current?.removeEventListener('error', onError);
+        resolve(void 0);
+      };
+      const onError = () => {
+        videoRef.current?.removeEventListener('loadedmetadata', onLoadedMetadata);
+        videoRef.current?.removeEventListener('error', onError);
+        reject(new Error('Failed to load user video'));
+      };
+      
+      videoRef.current?.addEventListener('loadedmetadata', onLoadedMetadata);
+      videoRef.current?.addEventListener('error', onError);
+      
+      // Additional timeout for video loading
+      setTimeout(() => {
+        videoRef.current?.removeEventListener('loadedmetadata', onLoadedMetadata);
+        videoRef.current?.removeEventListener('error', onError);
+        reject(new Error('Video loading timeout'));
+      }, 10000);
+    });
+
+    setProgress(10);
+
+    // Analyze user video with limited frames
+    console.log("Analyzing user video with limited frames...");
+    const userFrames = await analyzeVideoFrames(videoRef.current, 15);
+    setUserKeyframes(userFrames);
+    setProgress(50);
+
+    // Load and analyze reference video if available
+    let comparison: ComparisonResult | null = null;
+
+    if (referenceVideoUrl && referenceVideoRef.current) {
+      console.log("Loading reference video for comparison...");
+      
+      referenceVideoRef.current.src = referenceVideoUrl;
+      
+      await new Promise((resolve, reject) => {
+        const onLoadedMetadata = () => {
+          referenceVideoRef.current?.removeEventListener('loadedmetadata', onLoadedMetadata);
+          referenceVideoRef.current?.removeEventListener('error', onError);
+          resolve(void 0);
+        };
+        const onError = () => {
+          referenceVideoRef.current?.removeEventListener('loadedmetadata', onLoadedMetadata);
+          referenceVideoRef.current?.removeEventListener('error', onError);
+          reject(new Error('Failed to load reference video'));
+        };
+        
+        referenceVideoRef.current?.addEventListener('loadedmetadata', onLoadedMetadata);
+        referenceVideoRef.current?.addEventListener('error', onError);
+        
+        // Timeout for reference video loading
+        setTimeout(() => {
+          referenceVideoRef.current?.removeEventListener('loadedmetadata', onLoadedMetadata);
+          referenceVideoRef.current?.removeEventListener('error', onError);
+          reject(new Error('Reference video loading timeout'));
+        }, 10000);
+      });
+
+      // Analyze reference video with limited frames
+      const referenceFrames = await analyzeVideoFrames(referenceVideoRef.current, 15);
+      setReferenceKeyframes(referenceFrames);
+      
+      if (referenceFrames.length > 0 && userFrames.length > 0) {
+        comparison = compareKeypointSequences(userFrames, referenceFrames);
+        setComparisonResult(comparison);
+        console.log("Comparison result:", comparison);
+      }
+    }
+
+    setProgress(90);
+
+    // Calculate final scores
+    const scores = calculateScores(userFrames, comparison);
+    
+    const results = {
+      scores,
+      comparison,
+      userFrames: userFrames.length,
+      referenceFrames: referenceKeyframes.length,
+      metrics: {
+        similarity: comparison?.overallSimilarity || 0,
+        timing: comparison?.timingScore || 0,
+        confidence: userFrames.reduce((sum, f) => sum + f.confidence, 0) / (userFrames.length || 1)
+      }
+    };
+
+    setProgress(100);
+    setAnalysisResults(results);
+    setAnalysisPhase('complete');
+    onAnalysisComplete(results);
+
+    URL.revokeObjectURL(url);
+  };
+
   const analyzeVideo = useCallback(async () => {
     if (!detector || !selectedFile || !videoRef.current || !referenceVideoUrl) return;
 
@@ -233,79 +345,20 @@ const ReferenceVideoAnalyzer: React.FC<ReferenceVideoAnalyzerProps> = ({
     setProgress(0);
     setError(null);
 
+    // Create timeout handler to prevent hanging
+    const timeoutMs = 45000; // 45 second timeout
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Analysis timeout - please try again with a shorter video')), timeoutMs);
+    });
+
     try {
-      console.log("🔍 Starting reference comparison analysis...");
+      console.log("🔍 Starting reference comparison analysis with timeout...");
       
-      // Setup user video
-      const url = URL.createObjectURL(selectedFile);
-      videoRef.current.src = url;
-      
-      await new Promise(resolve => {
-        const onLoadedMetadata = () => {
-          videoRef.current?.removeEventListener('loadedmetadata', onLoadedMetadata);
-          resolve(void 0);
-        };
-        videoRef.current?.addEventListener('loadedmetadata', onLoadedMetadata);
-      });
-
-      setProgress(10);
-
-      // Analyze user video
-      console.log("Analyzing user video...");
-      const userFrames = await analyzeVideoFrames(videoRef.current);
-      setUserKeyframes(userFrames);
-      setProgress(50);
-
-      // Load and analyze reference video if available
-      let comparison: ComparisonResult | null = null;
-
-      if (referenceVideoUrl && referenceVideoRef.current) {
-        console.log("Loading reference video for comparison...");
-        
-        referenceVideoRef.current.src = referenceVideoUrl;
-        
-        await new Promise(resolve => {
-          const onLoadedMetadata = () => {
-            referenceVideoRef.current?.removeEventListener('loadedmetadata', onLoadedMetadata);
-            resolve(void 0);
-          };
-          referenceVideoRef.current?.addEventListener('loadedmetadata', onLoadedMetadata);
-        });
-
-        // Analyze reference video
-        const referenceFrames = await analyzeVideoFrames(referenceVideoRef.current);
-        setReferenceKeyframes(referenceFrames);
-        
-        if (referenceFrames.length > 0 && userFrames.length > 0) {
-          comparison = compareKeypointSequences(userFrames, referenceFrames);
-          setComparisonResult(comparison);
-          console.log("Comparison result:", comparison);
-        }
-      }
-
-      setProgress(90);
-
-      // Calculate final scores
-      const scores = calculateScores(userFrames, comparison);
-      
-      const results = {
-        scores,
-        comparison,
-        userFrames: userFrames.length,
-        referenceFrames: referenceKeyframes.length,
-        metrics: {
-          similarity: comparison?.overallSimilarity || 0,
-          timing: comparison?.timingScore || 0,
-          confidence: userFrames.reduce((sum, f) => sum + f.confidence, 0) / userFrames.length
-        }
-      };
-
-      setProgress(100);
-      setAnalysisResults(results);
-      setAnalysisPhase('complete');
-      onAnalysisComplete(results);
-
-      URL.revokeObjectURL(url);
+      // Wrap the analysis in a race with timeout
+      await Promise.race([
+        performAnalysis(),
+        timeoutPromise
+      ]);
 
     } catch (err) {
       console.error('Analysis error:', err);
@@ -314,90 +367,7 @@ const ReferenceVideoAnalyzer: React.FC<ReferenceVideoAnalyzerProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [detector, selectedFile, skill, onAnalysisComplete]);
-
-  // Mock reference frames for demonstration
-  const generateMockReferenceFrames = (skill: string): KeypointFrame[] => {
-    const mockFrames: KeypointFrame[] = [];
-    const frameCount = 30; // 3 seconds at 10 FPS
-    
-    for (let i = 0; i < frameCount; i++) {
-      const t = i / frameCount; // Time progression 0 to 1
-      
-      // Generate idealized keypoints for volleyball skills
-      const keypoints = generateIdealVolleyballPose(skill, t);
-      
-      mockFrames.push({
-        keypoints,
-        timestamp: t * 3, // 3 second duration
-        confidence: 0.85 + Math.random() * 0.1
-      });
-    }
-    
-    return mockFrames;
-  };
-
-  const generateIdealVolleyballPose = (skill: string, timeProgress: number): number[][] => {
-    // Generate 17 keypoints for COCO pose format
-    const keypoints: number[][] = [];
-    
-    // Basic body structure (normalized coordinates)
-    const centerX = 0.5;
-    const headY = 0.15;
-    const shoulderY = 0.25;
-    const hipY = 0.55;
-    const kneeY = 0.75;
-    const ankleY = 0.95;
-    
-    if (skill === 'Serve') {
-      // Serving motion progression
-      const armHeight = 0.1 + Math.sin(timeProgress * Math.PI) * 0.15; // Arm swing
-      const bodyLean = Math.sin(timeProgress * Math.PI * 0.5) * 0.05;
-      
-      keypoints.push(
-        [centerX, headY, 0.9], // nose
-        [centerX - 0.02, headY - 0.02, 0.9], // left_eye  
-        [centerX + 0.02, headY - 0.02, 0.9], // right_eye
-        [centerX - 0.03, headY, 0.8], // left_ear
-        [centerX + 0.03, headY, 0.8], // right_ear
-        [centerX - 0.12 + bodyLean, shoulderY, 0.9], // left_shoulder
-        [centerX + 0.12 + bodyLean, shoulderY, 0.9], // right_shoulder
-        [centerX - 0.08, shoulderY + 0.15, 0.8], // left_elbow
-        [centerX + 0.15, shoulderY + armHeight, 0.9], // right_elbow (serving arm)
-        [centerX - 0.05, shoulderY + 0.25, 0.8], // left_wrist
-        [centerX + 0.18, shoulderY + armHeight + 0.1, 0.9], // right_wrist
-        [centerX - 0.08, hipY, 0.9], // left_hip
-        [centerX + 0.08, hipY, 0.9], // right_hip
-        [centerX - 0.08, kneeY - timeProgress * 0.05, 0.8], // left_knee
-        [centerX + 0.08, kneeY - timeProgress * 0.05, 0.8], // right_knee
-        [centerX - 0.08, ankleY, 0.8], // left_ankle
-        [centerX + 0.08, ankleY, 0.8]  // right_ankle
-      );
-    } else {
-      // Default pose for other skills
-      keypoints.push(
-        [centerX, headY, 0.9],
-        [centerX - 0.02, headY - 0.02, 0.9],
-        [centerX + 0.02, headY - 0.02, 0.9],
-        [centerX - 0.03, headY, 0.8],
-        [centerX + 0.03, headY, 0.8],
-        [centerX - 0.12, shoulderY, 0.9],
-        [centerX + 0.12, shoulderY, 0.9],
-        [centerX - 0.15, shoulderY + 0.15, 0.8],
-        [centerX + 0.15, shoulderY + 0.15, 0.8],
-        [centerX - 0.18, shoulderY + 0.25, 0.8],
-        [centerX + 0.18, shoulderY + 0.25, 0.8],
-        [centerX - 0.08, hipY, 0.9],
-        [centerX + 0.08, hipY, 0.9],
-        [centerX - 0.08, kneeY, 0.8],
-        [centerX + 0.08, kneeY, 0.8],
-        [centerX - 0.08, ankleY, 0.8],
-        [centerX + 0.08, ankleY, 0.8]
-      );
-    }
-    
-    return keypoints;
-  };
+  }, [detector, selectedFile, referenceVideoUrl, onAnalysisComplete]);
 
   // Load video when file changes
   useEffect(() => {
@@ -452,7 +422,7 @@ const ReferenceVideoAnalyzer: React.FC<ReferenceVideoAnalyzerProps> = ({
         <Alert className="border-destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription className="text-destructive">
-            {error}
+            {error}. <Button variant="outline" size="sm" onClick={analyzeVideo} className="ml-2">Try Again</Button>
           </AlertDescription>
         </Alert>
       )}
