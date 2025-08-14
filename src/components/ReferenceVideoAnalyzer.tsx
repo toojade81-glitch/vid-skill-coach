@@ -203,23 +203,26 @@ const ReferenceVideoAnalyzer: React.FC<ReferenceVideoAnalyzerProps> = ({
 
     // Enhance scores with reference comparison if available
     if (comparison) {
-      console.log("Enhancing scores with reference comparison:", comparison);
+      console.log("🎯 Enhancing scores with reference comparison:", comparison);
       
-      // Technique score based on similarity to reference
-      techniqueScore = Math.min(100, 30 + comparison.overallSimilarity * 70);
+      // More generous scoring based on similarity
+      // Even 50% similarity should give decent scores (60-70 range)
+      techniqueScore = Math.max(50, Math.min(100, 40 + comparison.overallSimilarity * 60));
       
-      // Timing score based on sequence similarity
-      const timingScore = Math.min(100, 40 + comparison.timingScore * 60);
+      // Timing score based on sequence similarity  
+      const timingScore = Math.max(50, Math.min(100, 30 + comparison.timingScore * 70));
       
       // Power and accuracy based on phase execution
-      const powerScore = Math.min(100, 35 + comparison.phaseScores.execution * 65);
-      const accuracyScore = Math.min(100, 30 + comparison.overallSimilarity * 70);
+      const powerScore = Math.max(50, Math.min(100, 25 + comparison.phaseScores.execution * 75));
+      const accuracyScore = Math.max(50, Math.min(100, 20 + comparison.overallSimilarity * 80));
       
       scores.technique = Math.round(techniqueScore);
       scores.timing = Math.round(timingScore);
       scores.power = Math.round(powerScore);
       scores.accuracy = Math.round(accuracyScore);
       scores.overall = Math.round((techniqueScore + timingScore + powerScore + accuracyScore) / 4);
+      
+      console.log("🏆 Final enhanced scores:", scores);
     } else {
       // Fallback to basic movement analysis
       scores.technique = Math.round(techniqueScore);
@@ -306,9 +309,21 @@ const ReferenceVideoAnalyzer: React.FC<ReferenceVideoAnalyzerProps> = ({
       setReferenceKeyframes(referenceFrames);
       
       if (referenceFrames.length > 0 && userFrames.length > 0) {
+        console.log("🔍 Starting comparison with frames:", {
+          userFrames: userFrames.length,
+          referenceFrames: referenceFrames.length,
+          userFirstFrame: userFrames[0],
+          refFirstFrame: referenceFrames[0]
+        });
+        
         comparison = compareKeypointSequences(userFrames, referenceFrames);
         setComparisonResult(comparison);
-        console.log("Comparison result:", comparison);
+        console.log("✅ Comparison result:", comparison);
+      } else {
+        console.log("⚠️ Cannot compare - insufficient frames:", {
+          userFrames: userFrames.length,
+          referenceFrames: referenceFrames.length
+        });
       }
     }
 

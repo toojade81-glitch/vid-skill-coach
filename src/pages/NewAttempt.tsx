@@ -363,7 +363,15 @@ const NewAttempt = () => {
                         selectedFile={videoFile}
                         skill={formData.skill}
                         referenceVideoUrl={referenceVideoUrl}
-                        onAnalysisComplete={handleAnalysisComplete}
+                        onAnalysisComplete={(results) => {
+                          console.log("📊 Reference analysis complete:", results);
+                          // Ensure we have rubric frames from any previous analysis
+                          const finalResults = {
+                            ...results,
+                            rubricFrames: rubricFrames || {}
+                          };
+                          handleAnalysisComplete(finalResults);
+                        }}
                       />
                     </>
                   ) : (

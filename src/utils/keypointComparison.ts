@@ -120,7 +120,9 @@ export const compareKeypointSequences = (
 ): ComparisonResult => {
   console.log("🔍 Starting keypoint comparison:", {
     userFrames: userFrames.length,
-    referenceFrames: referenceFrames.length
+    referenceFrames: referenceFrames.length,
+    userFirstConf: userFrames[0]?.confidence,
+    refFirstConf: referenceFrames[0]?.confidence
   });
 
   // If comparing the same video (exact match), return perfect scores
@@ -170,11 +172,13 @@ export const compareKeypointSequences = (
   console.log("📊 Phase scores:", phaseScores);
   
   // Calculate overall similarity (weighted average) with minimum floor
-  const overallSimilarity = Math.max(0.3, 
+  const overallSimilarity = Math.max(0.25, 
     phaseScores.preparation * 0.2 +
     phaseScores.execution * 0.6 +
     phaseScores.followThrough * 0.2
   );
+  
+  console.log("🎯 Raw overall similarity:", overallSimilarity);
   
   // Calculate timing score based on sequence length similarity
   const timingScore = Math.max(0.5, calculateTimingScore(normalizedUserFrames, normalizedRefFrames));
