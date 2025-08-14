@@ -31,17 +31,39 @@ const NewAttempt = () => {
 
   const startCamera = async () => {
     try {
+      console.log("Starting camera...");
+      
       const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "environment" }, // Use back camera for better framing
+        video: { 
+          facingMode: "environment", // Use back camera for better framing
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
         audio: false 
       });
       
+      console.log("Camera stream obtained:", mediaStream);
+      console.log("Video tracks:", mediaStream.getVideoTracks());
+      
       setStream(mediaStream);
+      
       if (videoRef.current) {
+        console.log("Setting video source...");
         videoRef.current.srcObject = mediaStream;
+        
+        // Ensure video plays
+        videoRef.current.onloadedmetadata = () => {
+          console.log("Video metadata loaded");
+          videoRef.current?.play().catch(err => {
+            console.error("Error playing video:", err);
+          });
+        };
+      } else {
+        console.error("Video ref not found");
       }
     } catch (error) {
-      toast.error("Failed to access camera. Please try uploading a video instead.");
+      console.error("Camera error:", error);
+      toast.error(`Failed to access camera: ${error.message}`);
     }
   };
 
@@ -273,6 +295,14 @@ const NewAttempt = () => {
                       muted
                       playsInline
                       className="w-full h-64 object-cover"
+                      style={{ transform: 'scaleX(-1)' }} // Mirror the video for better UX
+                      onError={(e) => {
+                        console.error("Video element error:", e);
+                        toast.error("Video display error");
+                      }}
+                      onCanPlay={() => {
+                        console.log("Video can play");
+                      }}
                     />
                     <div className="absolute inset-0 border-2 border-dashed border-white/50 m-4 rounded-lg pointer-events-none" />
                     <div className="absolute bottom-4 left-4 right-4 text-center">
@@ -287,6 +317,7 @@ const NewAttempt = () => {
                       onClick={startRecording}
                       className="flex-1"
                       size="lg"
+                      disabled={!stream}
                     >
                       <Play className="h-4 w-4 mr-2" />
                       Start Recording
@@ -311,6 +342,7 @@ const NewAttempt = () => {
                       muted
                       playsInline
                       className="w-full h-64 object-cover"
+                      style={{ transform: 'scaleX(-1)' }} // Mirror the video for better UX
                     />
                     <div className="absolute top-4 left-4 right-4 flex justify-between items-center">
                       <div className="flex items-center gap-2">
