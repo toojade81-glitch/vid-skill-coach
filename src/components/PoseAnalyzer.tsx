@@ -19,7 +19,7 @@ interface PoseAnalyzerProps {
   videoFile: File | null;
   skill: "Setting" | "Digging";
   target: "Left" | "Center" | "Right";
-  onAnalysisComplete: (metrics: PoseMetrics, scores: Record<string, number>, confidence: number) => void;
+  onAnalysisComplete: (metrics: PoseMetrics, scores: Record<string, number>, confidence: number, capturedFrame?: string) => void;
 }
 
 const PoseAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: PoseAnalyzerProps) => {
@@ -37,6 +37,21 @@ const PoseAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: PoseAnal
     
     return () => clearTimeout(timer);
   }, []);
+
+  const captureVideoFrame = (video: HTMLVideoElement): string => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    if (ctx) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', 0.8);
+    }
+    
+    return '';
+  };
 
   const analyzeVideo = async () => {
     if (!videoFile || !videoRef.current) {
@@ -57,17 +72,30 @@ const PoseAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: PoseAnal
       });
 
       // Simulate analysis progress
-      for (let i = 0; i <= 100; i += 10) {
+      for (let i = 0; i <= 90; i += 10) {
         setProgress(i);
         await new Promise(resolve => setTimeout(resolve, 200));
       }
+
+      // Capture frame at mid-point of video for pose reference
+      const duration = video.duration;
+      const captureTime = duration * 0.5; // Middle of video
+      video.currentTime = captureTime;
+      
+      await new Promise((resolve) => {
+        video.onseeked = resolve;
+      });
+
+      const capturedFrame = captureVideoFrame(video);
+      setProgress(100);
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Generate simulated but realistic metrics based on skill type
       const metrics = generateSimulatedMetrics(skill, target);
       const scores = calculateScores(metrics, skill);
       const confidence = generateRealisticConfidence(skill);
 
-      onAnalysisComplete(metrics, scores, confidence);
+      onAnalysisComplete(metrics, scores, confidence, capturedFrame);
       toast.success("Analysis complete!");
     } catch (error) {
       console.error("Analysis failed:", error);

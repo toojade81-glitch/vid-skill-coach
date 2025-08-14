@@ -7,6 +7,7 @@ interface ScoreAdjustmentProps {
   skill: "Setting" | "Digging";
   autoScores: Record<string, number>;
   onScoreChange: (scores: Record<string, number>) => void;
+  capturedFrame?: string;
 }
 
 const SKILL_CRITERIA = {
@@ -88,7 +89,7 @@ const SKILL_CRITERIA = {
   }
 };
 
-const ScoreAdjustment = ({ skill, autoScores, onScoreChange }: ScoreAdjustmentProps) => {
+const ScoreAdjustment = ({ skill, autoScores, onScoreChange, capturedFrame }: ScoreAdjustmentProps) => {
   const [scores, setScores] = useState(autoScores);
   const criteria = SKILL_CRITERIA[skill];
 
@@ -107,6 +108,26 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange }: ScoreAdjustmentPr
 
   return (
     <div className="space-y-6">
+      {capturedFrame && (
+        <Card className="p-4">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Analyzed Pose Reference</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="relative">
+              <img 
+                src={capturedFrame} 
+                alt="Captured pose for analysis" 
+                className="w-full h-48 object-cover rounded-lg border border-border"
+              />
+              <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs">
+                AI analyzed this pose moment
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
       <div className="text-sm text-muted-foreground">
         The AI has analyzed your technique. Adjust any scores that don't seem accurate.
       </div>

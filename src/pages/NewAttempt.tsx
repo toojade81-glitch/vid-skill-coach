@@ -23,6 +23,7 @@ const NewAttempt = () => {
   const [finalScores, setFinalScores] = useState<Record<string, number>>({});
   const [metrics, setMetrics] = useState<any>(null);
   const [confidence, setConfidence] = useState(0);
+  const [capturedFrame, setCapturedFrame] = useState<string>("");
   const [isRecording, setIsRecording] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("user");
@@ -206,11 +207,12 @@ const NewAttempt = () => {
     }
   };
 
-  const handleAnalysisComplete = (analysisMetrics: any, scores: Record<string, number>, conf: number) => {
+  const handleAnalysisComplete = (analysisMetrics: any, scores: Record<string, number>, conf: number, frame?: string) => {
     setMetrics(analysisMetrics);
     setAutoScores(scores);
     setFinalScores(scores);
     setConfidence(conf);
+    setCapturedFrame(frame || "");
     setStep("review");
   };
 
@@ -596,6 +598,7 @@ const NewAttempt = () => {
                   skill={formData.skill}
                   autoScores={autoScores}
                   onScoreChange={handleScoreAdjustment}
+                  capturedFrame={capturedFrame}
                 />
               </CardContent>
             </Card>
