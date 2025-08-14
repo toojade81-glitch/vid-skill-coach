@@ -343,6 +343,7 @@ const NewAttempt = () => {
                   autoScores={autoScores}
                   onScoreChange={handleScoreAdjustment}
                   rubricFrames={rubricFrames}
+                  videoFile={videoFile}
                 />
               </CardContent>
             </Card>

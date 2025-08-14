@@ -5,12 +5,14 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Copy, Check } from "lucide-react";
 import { toast } from "sonner";
+import VideoSlider from "./VideoSlider";
 
 interface ScoreAdjustmentProps {
   skill: "Setting" | "Digging";
   autoScores: Record<string, number>;
   onScoreChange: (scores: Record<string, number>) => void;
   rubricFrames?: Record<string, string>;
+  videoFile?: File;
 }
 
 const SKILL_CRITERIA = {
@@ -92,7 +94,7 @@ const SKILL_CRITERIA = {
   }
 };
 
-const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {} }: ScoreAdjustmentProps) => {
+const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, videoFile }: ScoreAdjustmentProps) => {
   const [scores, setScores] = useState<Record<string, number>>(autoScores);
   const [copied, setCopied] = useState(false);
 
@@ -237,7 +239,7 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {} }
             {/* Show specific reference frame for this component if available */}
             {rubricFrames[key] && (
               <div className="mb-4">
-                <div className="text-xs font-medium text-muted-foreground mb-2">Reference Frame:</div>
+                <div className="text-xs font-medium text-muted-foreground mb-2">AI Captured Reference Frame:</div>
                 <div className="relative">
                   <img 
                     src={rubricFrames[key]} 
@@ -248,6 +250,17 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {} }
                     AI captured
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* Video scrubber for manual frame selection */}
+            {videoFile && (
+              <div className="mb-4">
+                <div className="text-xs font-medium text-muted-foreground mb-2">Manual Frame Review:</div>
+                <VideoSlider
+                  videoFile={videoFile}
+                  className="w-full"
+                />
               </div>
             )}
             
