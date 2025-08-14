@@ -17,6 +17,65 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
   const [currentTime, setCurrentTime] = useState(initialTime);
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<any>({});
+
+  // Debug the File object thoroughly
+  useEffect(() => {
+    console.log("🔍 DEEP FILE ANALYSIS:");
+    console.log("videoFile:", videoFile);
+    console.log("videoFile type:", typeof videoFile);
+    console.log("videoFile instanceof File:", videoFile instanceof File);
+    console.log("videoFile instanceof Blob:", videoFile instanceof Blob);
+    
+    if (videoFile) {
+      const debug = {
+        name: videoFile.name,
+        size: videoFile.size,
+        type: videoFile.type,
+        lastModified: videoFile.lastModified,
+        isFile: videoFile instanceof File,
+        isBlob: videoFile instanceof Blob,
+        constructor: videoFile.constructor.name
+      };
+      
+      console.log("📊 File object details:", debug);
+      setDebugInfo(debug);
+      
+      // Test blob URL creation immediately
+      try {
+        const testUrl = URL.createObjectURL(videoFile);
+        console.log("✅ Blob URL created successfully:", testUrl);
+        
+        // Test if the blob URL actually works
+        fetch(testUrl, { method: 'HEAD' })
+          .then(response => {
+            console.log("🌐 Blob URL fetch test:", {
+              status: response.status,
+              ok: response.ok,
+              contentType: response.headers.get('content-type'),
+              contentLength: response.headers.get('content-length')
+            });
+          })
+          .catch(err => {
+            console.error("❌ Blob URL fetch failed:", err);
+          });
+          
+        URL.revokeObjectURL(testUrl);
+      } catch (error) {
+        console.error("❌ Blob URL creation failed:", error);
+      }
+      
+      // Test if we can read the file directly
+      const reader = new FileReader();
+      reader.onload = () => {
+        console.log("✅ FileReader successful - file is readable");
+      };
+      reader.onerror = () => {
+        console.error("❌ FileReader failed - file may be corrupted or inaccessible");
+      };
+      reader.readAsArrayBuffer(videoFile.slice(0, 1024)); // Read first 1KB as test
+    }
+  }, [videoFile]);
 
   const handleTimeUpdate = () => {
     const video = videoRef.current;
@@ -88,6 +147,19 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
   if (!videoReady) {
     return (
       <div className={`space-y-3 ${className}`}>
+        {/* Debug info panel */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <div className="text-xs font-medium text-blue-900 mb-2">🔍 FILE DEBUG INFO:</div>
+          <div className="text-xs text-blue-800 space-y-1">
+            <div>Name: {debugInfo.name}</div>
+            <div>Size: {debugInfo.size ? `${(debugInfo.size / 1024 / 1024).toFixed(2)}MB` : 'Unknown'}</div>
+            <div>Type: {debugInfo.type}</div>
+            <div>Is File: {debugInfo.isFile ? 'Yes' : 'No'}</div>
+            <div>Is Blob: {debugInfo.isBlob ? 'Yes' : 'No'}</div>
+            <div>Constructor: {debugInfo.constructor}</div>
+          </div>
+        </div>
+
         <div className="relative">
           {/* Simple, direct video element - let browser handle everything */}
           <video
@@ -101,7 +173,7 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
             playsInline
             controls={false}
           >
-            <source src={URL.createObjectURL(videoFile)} type={videoFile.type} />
+            <source src={videoFile ? URL.createObjectURL(videoFile) : ''} type={videoFile?.type} />
             Your browser does not support video playback.
           </video>
           <canvas ref={canvasRef} className="hidden" />
