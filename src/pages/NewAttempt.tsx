@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Video, Camera, Upload } from "lucide-react";
+import { ArrowLeft, Video, Camera, Upload, Square, Play } from "lucide-react";
 import { toast } from "sonner";
 import PoseAnalyzer from "@/components/PoseAnalyzer";
 import ScoreAdjustment from "@/components/ScoreAdjustment";
@@ -14,8 +14,6 @@ import { supabase } from "@/integrations/supabase/client";
 const NewAttempt = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    studentId: "",
-    class: "",
     skill: "Setting" as "Setting" | "Digging",
     target: "Center" as "Left" | "Center" | "Right",
     notes: ""
@@ -26,41 +24,75 @@ const NewAttempt = () => {
   const [finalScores, setFinalScores] = useState<Record<string, number>>({});
   const [metrics, setMetrics] = useState<any>(null);
   const [confidence, setConfidence] = useState(0);
+  const [isRecording, setIsRecording] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
-  const handleVideoCapture = async () => {
+  const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "user" },
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: "environment" }, // Use back camera for better framing
         audio: false 
       });
       
-      // Create a simple video recorder
-      const mediaRecorder = new MediaRecorder(stream);
-      const chunks: BlobPart[] = [];
-      
-      mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'video/webm' });
-        const file = new File([blob], 'recording.webm', { type: 'video/webm' });
-        setVideoFile(file);
-        setStep("analyze");
-        stream.getTracks().forEach(track => track.stop());
-      };
-      
-      mediaRecorder.start();
-      
-      // Stop recording after 10 seconds
-      setTimeout(() => {
-        if (mediaRecorder.state === "recording") {
-          mediaRecorder.stop();
-        }
-      }, 10000);
-      
-      toast.success("Recording started! Recording will stop automatically after 10 seconds.");
+      setStream(mediaStream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+      }
     } catch (error) {
       toast.error("Failed to access camera. Please try uploading a video instead.");
     }
   };
+
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+  };
+
+  const startRecording = () => {
+    if (!stream) return;
+    
+    const mediaRecorder = new MediaRecorder(stream);
+    const chunks: BlobPart[] = [];
+    
+    mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(chunks, { type: 'video/webm' });
+      const file = new File([blob], 'recording.webm', { type: 'video/webm' });
+      setVideoFile(file);
+      setIsRecording(false);
+      stopCamera();
+      setStep("analyze");
+    };
+    
+    mediaRecorderRef.current = mediaRecorder;
+    setIsRecording(true);
+    mediaRecorder.start();
+    
+    // Stop recording after 10 seconds
+    setTimeout(() => {
+      if (mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+      }
+    }, 10000);
+    
+    toast.success("Recording started! Will stop automatically after 10 seconds.");
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -111,7 +143,7 @@ const NewAttempt = () => {
     }
   };
 
-  const canProceed = formData.studentId.trim() && formData.class.trim();
+  const canProceed = true; // No longer need student ID and class
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 to-primary/10 p-4">
@@ -132,26 +164,6 @@ const NewAttempt = () => {
               <CardTitle>Assessment Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="studentId">Student ID</Label>
-                <Input
-                  id="studentId"
-                  value={formData.studentId}
-                  onChange={(e) => setFormData(prev => ({ ...prev, studentId: e.target.value }))}
-                  placeholder="Enter your student ID"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="class">Class</Label>
-                <Input
-                  id="class"
-                  value={formData.class}
-                  onChange={(e) => setFormData(prev => ({ ...prev, class: e.target.value }))}
-                  placeholder="Enter your class"
-                />
-              </div>
-
               <div>
                 <Label>Skill</Label>
                 <div className="flex gap-2 mt-2">
@@ -231,43 +243,117 @@ const NewAttempt = () => {
                 </ul>
               </div>
 
-              <div className="space-y-3">
+              {!stream && !isRecording && (
                 <Button
-                  onClick={handleVideoCapture}
+                  onClick={startCamera}
                   className="w-full"
                   size="lg"
                 >
                   <Camera className="h-4 w-4 mr-2" />
-                  Record with Camera
+                  Start Camera
                 </Button>
+              )}
 
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">Or</span>
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="video-upload" className="block w-full">
-                    <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors">
-                      <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">
-                        Click to upload video file
+              {stream && !isRecording && (
+                <div className="space-y-4">
+                  <div className="relative bg-black rounded-lg overflow-hidden">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      className="w-full h-64 object-cover"
+                    />
+                    <div className="absolute inset-0 border-2 border-dashed border-white/50 m-4 rounded-lg pointer-events-none" />
+                    <div className="absolute bottom-4 left-4 right-4 text-center">
+                      <p className="text-white text-sm bg-black/50 px-2 py-1 rounded">
+                        Position yourself within the frame
                       </p>
                     </div>
-                  </Label>
-                  <Input
-                    id="video-upload"
-                    type="file"
-                    accept="video/*"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
+                  </div>
+                  
+                  <div className="flex gap-3">
+                    <Button
+                      onClick={startRecording}
+                      className="flex-1"
+                      size="lg"
+                    >
+                      <Play className="h-4 w-4 mr-2" />
+                      Start Recording
+                    </Button>
+                    <Button
+                      onClick={stopCamera}
+                      variant="outline"
+                      size="lg"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {isRecording && (
+                <div className="space-y-4">
+                  <div className="relative bg-black rounded-lg overflow-hidden">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      className="w-full h-64 object-cover"
+                    />
+                    <div className="absolute top-4 left-4 right-4 flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                        <span className="text-white text-sm font-medium bg-black/50 px-2 py-1 rounded">
+                          RECORDING
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <Button
+                    onClick={stopRecording}
+                    variant="destructive"
+                    className="w-full"
+                    size="lg"
+                  >
+                    <Square className="h-4 w-4 mr-2" />
+                    Stop Recording
+                  </Button>
+                </div>
+              )}
+
+              {!isRecording && (
+                <>
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-background px-2 text-muted-foreground">Or</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="video-upload" className="block w-full">
+                      <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors">
+                        <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">
+                          Click to upload video file
+                        </p>
+                      </div>
+                    </Label>
+                    <Input
+                      id="video-upload"
+                      type="file"
+                      accept="video/*"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         )}
