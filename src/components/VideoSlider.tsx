@@ -25,8 +25,10 @@ const VideoSlider = ({ videoFile, componentName, onFrameCapture, initialCaptured
 
     const url = URL.createObjectURL(videoFile);
     video.src = url;
+    video.load(); // Force load
 
     const handleLoadedMetadata = () => {
+      console.log(`Video loaded: ${video.duration}s`);
       setDuration(video.duration);
       setIsLoading(false);
     };
@@ -37,17 +39,20 @@ const VideoSlider = ({ videoFile, componentName, onFrameCapture, initialCaptured
 
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
+    const handleEnded = () => setIsPlaying(false);
 
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
+    video.addEventListener('ended', handleEnded);
 
     return () => {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
+      video.removeEventListener('ended', handleEnded);
       URL.revokeObjectURL(url);
     };
   }, [videoFile]);
@@ -59,6 +64,12 @@ const VideoSlider = ({ videoFile, componentName, onFrameCapture, initialCaptured
     const newTime = value[0];
     video.currentTime = newTime;
     setCurrentTime(newTime);
+    
+    // Pause video when scrubbing
+    if (isPlaying) {
+      video.pause();
+      setIsPlaying(false);
+    }
   };
 
   const togglePlayPause = () => {
@@ -68,7 +79,9 @@ const VideoSlider = ({ videoFile, componentName, onFrameCapture, initialCaptured
     if (isPlaying) {
       video.pause();
     } else {
-      video.play();
+      video.play().catch(error => {
+        console.error('Failed to play video:', error);
+      });
     }
   };
 
@@ -115,9 +128,11 @@ const VideoSlider = ({ videoFile, componentName, onFrameCapture, initialCaptured
         <div className="relative bg-black rounded-lg overflow-hidden">
           <video
             ref={videoRef}
-            className="w-full h-32 object-contain"
+            className="w-full h-40 object-contain bg-black"
             muted
             playsInline
+            controls={false}
+            preload="metadata"
           />
           
           <div className="absolute bottom-2 left-2 right-2 flex items-center gap-2">

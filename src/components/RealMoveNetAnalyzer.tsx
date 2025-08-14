@@ -121,24 +121,38 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       y: (leftHip.y + rightHip.y) / 2
     };
     
-    // Detect volleyball-specific poses for Digging
+    // Detect volleyball-specific poses for Digging based on rubric descriptors
     if (skill === 'Digging') {
-      // Ready platform: early position, arms down
-      if (timePercent < 0.3 && leftWrist && rightWrist && leftWrist.y > shoulderCenter.y) {
-        return 'readyPlatform';
+      // Ready Platform: Low stance, arms down, platform formation (early phase)
+      if (timePercent < 0.4 && leftWrist && rightWrist && leftKnee && rightKnee) {
+        const kneeBend = leftKnee.y < leftHip.y && rightKnee.y < rightHip.y; // Knees bent
+        const armsDown = leftWrist.y > shoulderCenter.y && rightWrist.y > shoulderCenter.y;
+        const armLevel = Math.abs(leftWrist.y - rightWrist.y) < 30; // Platform level
+        
+        if (kneeBend && armsDown && armLevel) {
+          return 'readyPlatform';
+        }
       }
       
-      // Contact angle: arms in platform position
-      if (leftWrist && rightWrist && leftElbow && rightElbow) {
-        const armAngle = Math.abs(leftWrist.y - rightWrist.y);
-        if (armAngle < 50 && leftWrist.y > shoulderCenter.y) {
+      // Contact Angle: Mid-forearm contact, platform angle control (middle phase)
+      if (timePercent >= 0.3 && timePercent <= 0.7 && leftWrist && rightWrist && leftElbow && rightElbow) {
+        const armLevel = Math.abs(leftWrist.y - rightWrist.y) < 25; // Level platform
+        const forearmPosition = leftWrist.y > leftElbow.y && rightWrist.y > rightElbow.y; // Wrists below elbows
+        const properHeight = leftWrist.y < hipCenter.y; // Contact below waist
+        
+        if (armLevel && forearmPosition && properHeight) {
           return 'contactAngle';
         }
       }
       
-      // Follow-through: later in video
-      if (timePercent > 0.65) {
-        return 'followThroughControl';
+      // Follow-Through Control: Platform maintained after contact (late phase)
+      if (timePercent > 0.6 && leftWrist && rightWrist) {
+        const platformMaintained = Math.abs(leftWrist.y - rightWrist.y) < 30;
+        const controlledPosition = leftWrist.y > shoulderCenter.y && rightWrist.y > shoulderCenter.y;
+        
+        if (platformMaintained && controlledPosition) {
+          return 'followThroughControl';
+        }
       }
     }
     
@@ -172,32 +186,45 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
     
     if (skill === 'Digging') {
       if (poseType === 'readyPlatform') {
-        // Check platform formation and stance
+        // Rubric: Low, balanced stance; elbows locked; flat platform
         const armLevel = leftWrist && rightWrist ? 
           Math.abs(leftWrist.y - rightWrist.y) : 100;
         const armsBelow = leftWrist && rightWrist && 
           leftWrist.y > leftShoulder.y && rightWrist.y > rightShoulder.y;
+        const kneeBend = leftKnee && rightKnee && leftHip && rightHip &&
+          (leftKnee.y > leftHip.y) && (rightKnee.y > rightHip.y); // Knees below hips = bent
         
-        if (armsBelow && armLevel < 25) score += 1; // Must have proper platform formation
-        if (armLevel < 15) score += 1; // Very level platform
+        if (armsBelow && armLevel < 30) score += 1; // Platform formed
+        if (armLevel < 15 && kneeBend) score += 1; // Level platform with stance
+        if (kneeBend && armLevel < 10) score += 1; // Perfect: low stance + very flat platform
       }
       
       else if (poseType === 'contactAngle') {
-        // Check platform angle and position
-        const elbowExtension = leftElbow && rightElbow && leftWrist && rightWrist ?
-          (Math.abs(leftWrist.x - leftElbow.x) + Math.abs(rightWrist.x - rightElbow.x)) / 2 : 0;
+        // Rubric: Mid-forearms contact below waist; precise platform angle
+        const elbowLock = leftElbow && rightElbow && leftWrist && rightWrist &&
+          Math.abs(leftWrist.x - leftElbow.x) > 50 && Math.abs(rightWrist.x - rightElbow.x) > 50;
+        const contactHeight = leftWrist && leftHip && rightWrist && rightHip &&
+          leftWrist.y < leftHip.y && rightWrist.y < rightHip.y; // Below waist
+        const platformAngle = leftWrist && rightWrist &&
+          Math.abs(leftWrist.y - rightWrist.y) < 20; // Precise angle
         
-        if (elbowExtension > 60) score += 1; // Extended arms (stricter)
-        if (elbowExtension > 90) score += 1; // Fully extended
+        if (elbowLock) score += 1; // Elbows locked
+        if (contactHeight && platformAngle) score += 1; // Proper contact point and angle
+        if (elbowLock && contactHeight && platformAngle) score += 1; // Perfect execution
       }
       
       else if (poseType === 'followThroughControl') {
-        // Check follow-through position
-        const wristExtension = leftWrist && rightWrist && leftElbow && rightElbow ?
-          (Math.abs(leftWrist.y - leftElbow.y) + Math.abs(rightWrist.y - rightElbow.y)) / 2 : 0;
+        // Rubric: Platform held steady after contact; consistent accuracy
+        const platformStable = leftWrist && rightWrist &&
+          Math.abs(leftWrist.y - rightWrist.y) < 25; // Platform maintained
+        const controlledHeight = leftWrist && leftShoulder && rightWrist && rightShoulder &&
+          leftWrist.y > leftShoulder.y && rightWrist.y > rightShoulder.y; // Arms still down
+        const elbowControl = leftElbow && rightElbow && leftWrist && rightWrist &&
+          Math.abs(leftWrist.x - leftElbow.x) > 40 && Math.abs(rightWrist.x - rightElbow.x) > 40;
         
-        if (wristExtension > 80) score += 1; // Good extension (stricter)
-        if (wristExtension > 110) score += 1; // Excellent extension
+        if (platformStable) score += 1; // Platform maintained
+        if (controlledHeight && elbowControl) score += 1; // Good control
+        if (platformStable && controlledHeight && elbowControl) score += 1; // Perfect follow-through
       }
     }
     
