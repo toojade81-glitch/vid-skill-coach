@@ -77,6 +77,34 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
     }
   }, [videoFile]);
 
+  // Create and test blob URL when component mounts
+  const [blobUrl, setBlobUrl] = useState<string>("");
+  
+  useEffect(() => {
+    if (videoFile) {
+      console.log("🎬 Creating blob URL for video element...");
+      
+      try {
+        const url = URL.createObjectURL(videoFile);
+        console.log("✅ Blob URL created:", url);
+        setBlobUrl(url);
+        
+        // Test the blob URL immediately
+        const testImg = new Image();
+        testImg.onload = () => console.log("✅ Blob URL is accessible");
+        testImg.onerror = () => console.log("❌ Blob URL test failed");
+        testImg.src = url;
+        
+        return () => {
+          URL.revokeObjectURL(url);
+          console.log("🧹 Blob URL revoked");
+        };
+      } catch (error) {
+        console.error("❌ Blob URL creation error:", error);
+      }
+    }
+  }, [videoFile]);
+
   const handleTimeUpdate = () => {
     const video = videoRef.current;
     if (video) {
@@ -132,8 +160,20 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
   // Simple video ready handler
   const handleVideoLoaded = () => {
     const video = videoRef.current;
-    if (video && video.duration) {
-      console.log("Video loaded:", video.duration);
+    console.log("🎉 handleVideoLoaded called");
+    console.log("📺 Video element state:", {
+      hasVideo: !!video,
+      src: video?.src,
+      duration: video?.duration,
+      readyState: video?.readyState,
+      networkState: video?.networkState,
+      videoWidth: video?.videoWidth,
+      videoHeight: video?.videoHeight,
+      error: video?.error
+    });
+    
+    if (video && video.duration && video.duration > 0) {
+      console.log("✅ Video loaded successfully with duration:", video.duration);
       setDuration(video.duration);
       setVideoReady(true);
       
@@ -141,7 +181,22 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
         video.currentTime = initialTime;
         setCurrentTime(initialTime);
       }
+    } else {
+      console.warn("⚠️ Video loaded but no duration available");
     }
+  };
+
+  const handleVideoError = (e: any) => {
+    const video = videoRef.current;
+    console.error("❌ Video error event:", e);
+    console.error("📺 Video error details:", {
+      error: video?.error,
+      errorCode: video?.error?.code,
+      errorMessage: video?.error?.message,
+      src: video?.src,
+      readyState: video?.readyState,
+      networkState: video?.networkState
+    });
   };
 
   if (!videoReady) {
@@ -157,25 +212,30 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
             <div>Is File: {debugInfo.isFile ? 'Yes' : 'No'}</div>
             <div>Is Blob: {debugInfo.isBlob ? 'Yes' : 'No'}</div>
             <div>Constructor: {debugInfo.constructor}</div>
+            <div>Blob URL: {blobUrl ? 'Created' : 'None'}</div>
+            <div>Blob URL Value: {blobUrl}</div>
           </div>
         </div>
 
         <div className="relative">
-          {/* Simple, direct video element - let browser handle everything */}
+          {/* Add comprehensive event handlers for debugging */}
           <video
             ref={videoRef}
+            src={blobUrl}
             className="w-full h-32 object-cover rounded-lg border border-border"
+            onLoadStart={() => console.log("📡 Video loadstart event")}
             onLoadedMetadata={handleVideoLoaded}
+            onLoadedData={() => console.log("📊 Video loadeddata event")}
+            onCanPlay={() => console.log("🟢 Video canplay event")}
+            onCanPlayThrough={() => console.log("🟢 Video canplaythrough event")}
+            onError={handleVideoError}
             onTimeUpdate={handleTimeUpdate}
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
             muted
             playsInline
             controls={false}
-          >
-            <source src={videoFile ? URL.createObjectURL(videoFile) : ''} type={videoFile?.type} />
-            Your browser does not support video playback.
-          </video>
+          />
           <canvas ref={canvasRef} className="hidden" />
           
           {/* Loading overlay */}
@@ -184,18 +244,30 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
           </div>
         </div>
         
-        {/* Fallback: Basic HTML5 video with controls */}
-        <div className="bg-gray-50 rounded-lg p-3">
-          <div className="text-xs text-gray-600 mb-2">If video doesn't load above, use this player:</div>
-          <video
-            controls
-            className="w-full h-24 rounded"
-            preload="metadata"
-          >
-            <source src={URL.createObjectURL(videoFile)} type={videoFile.type} />
-            <source src={URL.createObjectURL(videoFile)} />
-            Your browser does not support video playback.
-          </video>
+        {/* Fallback: Multiple video players with different approaches */}
+        <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+          <div className="text-xs text-gray-600 mb-2">Fallback players (try these if main doesn't work):</div>
+          
+          {/* Method 1: Direct blob URL */}
+          <div>
+            <div className="text-xs text-gray-500">Method 1 - Direct blob URL:</div>
+            <video controls className="w-full h-16 rounded" src={blobUrl} />
+          </div>
+          
+          {/* Method 2: Fresh blob URL each time */}
+          <div>
+            <div className="text-xs text-gray-500">Method 2 - Fresh blob URL:</div>
+            <video controls className="w-full h-16 rounded" src={videoFile ? URL.createObjectURL(videoFile) : ''} />
+          </div>
+          
+          {/* Method 3: Source element */}
+          <div>
+            <div className="text-xs text-gray-500">Method 3 - Source element:</div>
+            <video controls className="w-full h-16 rounded">
+              <source src={blobUrl} type={videoFile?.type} />
+              <source src={blobUrl} />
+            </video>
+          </div>
         </div>
         
         <div className="text-xs text-muted-foreground text-center">
@@ -210,6 +282,7 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
       <div className="relative">
         <video
           ref={videoRef}
+          src={blobUrl}
           className="w-full h-32 object-cover rounded-lg border border-border"
           onTimeUpdate={handleTimeUpdate}
           onPlay={() => setIsPlaying(true)}
@@ -217,9 +290,7 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
           muted
           playsInline
           controls={false}
-        >
-          <source src={URL.createObjectURL(videoFile)} type={videoFile.type} />
-        </video>
+        />
         <canvas ref={canvasRef} className="hidden" />
         <Button
           onClick={togglePlayPause}
