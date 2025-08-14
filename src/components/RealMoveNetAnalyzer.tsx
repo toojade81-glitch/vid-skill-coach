@@ -276,6 +276,67 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
     return Math.min(3, Math.max(0, score)); // Clamp to 0-3 range
   };
 
+  const detectMovementAndAction = (keypoints: any[], previousKeypoints: any[] | null) => {
+    if (!keypoints || !previousKeypoints) return { movement: 0, volleyballAction: false };
+    
+    const getPoint = (kps: any[], name: string) => {
+      const point = kps.find(kp => kp.name === name);
+      return point && point.score > 0.3 ? point : null;
+    };
+    
+    // Calculate movement between frames
+    let totalMovement = 0;
+    let validPoints = 0;
+    
+    const keyBodyParts = ['left_wrist', 'right_wrist', 'left_elbow', 'right_elbow', 'left_shoulder', 'right_shoulder'];
+    
+    keyBodyParts.forEach(partName => {
+      const current = getPoint(keypoints, partName);
+      const previous = getPoint(previousKeypoints, partName);
+      
+      if (current && previous) {
+        const distance = Math.sqrt(
+          Math.pow(current.x - previous.x, 2) + 
+          Math.pow(current.y - previous.y, 2)
+        );
+        totalMovement += distance;
+        validPoints++;
+      }
+    });
+    
+    const avgMovement = validPoints > 0 ? totalMovement / validPoints : 0;
+    
+    // Detect volleyball-specific actions
+    const leftWrist = getPoint(keypoints, 'left_wrist');
+    const rightWrist = getPoint(keypoints, 'right_wrist');
+    const leftShoulder = getPoint(keypoints, 'left_shoulder');
+    const rightShoulder = getPoint(keypoints, 'right_shoulder');
+    
+    let volleyballAction = false;
+    
+    if (leftWrist && rightWrist && leftShoulder && rightShoulder) {
+      const shoulderCenter = (leftShoulder.y + rightShoulder.y) / 2;
+      const handsAboveShoulders = leftWrist.y < shoulderCenter && rightWrist.y < shoulderCenter;
+      const handsBelowShoulders = leftWrist.y > shoulderCenter && rightWrist.y > shoulderCenter;
+      const significantArmMovement = avgMovement > 15; // Threshold for meaningful arm movement
+      
+      // Setting action: hands above shoulders with movement
+      if (handsAboveShoulders && significantArmMovement) {
+        volleyballAction = true;
+      }
+      
+      // Digging action: hands below shoulders in platform with movement
+      if (handsBelowShoulders && significantArmMovement) {
+        const armLevel = Math.abs(leftWrist.y - rightWrist.y);
+        if (armLevel < 40) { // Level platform formation
+          volleyballAction = true;
+        }
+      }
+    }
+    
+    return { movement: avgMovement, volleyballAction };
+  };
+
   const captureVideoFrame = (video: HTMLVideoElement): string => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -334,6 +395,9 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
 
       // Track pose quality scores for each component
       const componentScores: Record<string, number[]> = {};
+      let totalMovement = 0;
+      let volleyballActionFrames = 0;
+      let previousKeypoints: any[] | null = null;
       
       // Analyze frames with proper error handling
       for (let time = 0; time < duration; time += frameStep) {
@@ -367,10 +431,15 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
           if (poses[0]?.keypoints?.length > 0) {
             detectedFrames++;
             
+            // Detect movement and volleyball actions
+            const { movement, volleyballAction } = detectMovementAndAction(poses[0].keypoints, previousKeypoints);
+            totalMovement += movement;
+            if (volleyballAction) volleyballActionFrames++;
+            
             // Analyze volleyball-specific pose
             const poseType = analyzeVolleyballPose(poses[0].keypoints, skill, timePercent);
             
-            if (poseType) {
+            if (poseType && volleyballAction) { // Only score poses with volleyball action
               // Analyze pose quality and store score
               const poseQuality = analyzePoseQuality(poses[0].keypoints, skill, poseType);
               
@@ -383,9 +452,11 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
               if (!rubricFrames[poseType as keyof RubricFrames] || 
                   poseQuality > Math.max(...componentScores[poseType].slice(0, -1))) {
                 rubricFrames[poseType as keyof RubricFrames] = captureVideoFrame(video);
-                console.log(`📸 Captured ${poseType} frame at ${time.toFixed(1)}s (quality: ${poseQuality}/3)`);
+                console.log(`📸 Captured ${poseType} frame at ${time.toFixed(1)}s (quality: ${poseQuality}/3, movement: ${movement.toFixed(1)})`);
               }
             }
+            
+            previousKeypoints = poses[0].keypoints;
           }
 
           // Update progress more accurately
@@ -438,18 +509,48 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         ? ['readyFootwork', 'handShapeContact', 'alignmentExtension', 'followThroughControl']
         : ['readyPlatform', 'contactAngle', 'legDriveShoulder', 'followThroughControl'];
       
-      // Calculate detection rate and confidence
+      // Calculate realistic confidence based on movement and volleyball actions
+      const avgMovement = totalMovement / Math.max(1, detectedFrames);
+      const actionRate = volleyballActionFrames / Math.max(1, detectedFrames);
       const detectionRate = detectedFrames / Math.max(1, totalFrames);
-      const confidence = Math.min(1, detectionRate);
       
+      // Real confidence calculation
+      const movementConfidence = Math.min(1, avgMovement / 30); // Good movement = 30+ pixels
+      const actionConfidence = actionRate; // Percentage of frames with volleyball actions
+      const poseConfidence = detectionRate; // Pose detection success rate
+      
+      const confidence = (movementConfidence * 0.4 + actionConfidence * 0.4 + poseConfidence * 0.2);
+      
+      console.log(`📊 Analysis metrics:`);
+      console.log(`  - Detected frames: ${detectedFrames}/${totalFrames} (${(detectionRate * 100).toFixed(1)}%)`);
+      console.log(`  - Avg movement: ${avgMovement.toFixed(1)} pixels/frame`);
+      console.log(`  - Volleyball actions: ${volleyballActionFrames}/${detectedFrames} (${(actionRate * 100).toFixed(1)}%)`);
+      console.log(`  - Real confidence: ${(confidence * 100).toFixed(1)}%`);
+      
+      // Minimum confidence check - reject poor videos
+      if (confidence < 0.3 || volleyballActionFrames < 3 || avgMovement < 10) {
+        throw new Error(
+          `Video quality insufficient for analysis:\n` +
+          `• Movement detected: ${avgMovement.toFixed(1)} pixels (need >10)\n` +
+          `• Volleyball actions: ${volleyballActionFrames} frames (need ≥3)\n` +
+          `• Overall confidence: ${(confidence * 100).toFixed(1)}% (need ≥30%)\n\n` +
+          `Please record a new video showing clear volleyball technique.`
+        );
+      }
+
+      console.log(`📊 Analysis complete: ${detectedFrames}/${totalFrames} frames detected (${(confidence * 100).toFixed(1)}%)`);
+      
+      // Apply confidence penalty to scores for low-confidence analysis
       allComponents.forEach(component => {
         if (!finalScores[component]) {
-          // Fallback score based on detection confidence
-          finalScores[component] = Math.min(2, Math.floor(detectionRate * 3));
+          // Very low fallback score for no detected actions
+          finalScores[component] = 0;
+        } else {
+          // Apply confidence penalty
+          finalScores[component] = Math.floor(finalScores[component] * confidence);
         }
       });
 
-      console.log(`📊 Analysis complete: ${detectedFrames}/${totalFrames} frames detected (${(confidence * 100).toFixed(1)}%)`);
       console.log(`📸 Captured frames for: ${Object.keys(rubricFrames).join(', ')}`);
       console.log(`🎯 Component scores:`, finalScores);
 

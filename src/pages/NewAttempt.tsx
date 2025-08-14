@@ -234,13 +234,39 @@ const NewAttempt = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <p className="text-sm font-medium text-blue-900 mb-2">Video Requirements:</p>
-                <ul className="text-sm text-blue-800 space-y-1">
-                  <li>• Keep videos under 10 seconds for best results</li>
-                  <li>• Frame your full body in view</li>
-                  <li>• Face slightly towards the camera</li>
-                  <li>• Ensure good lighting</li>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="font-medium text-blue-900 mb-3">📹 Video Recording Instructions</h4>
+                <div className="grid md:grid-cols-2 gap-4 text-sm text-blue-800">
+                  <div>
+                    <h5 className="font-medium mb-2">Camera Position:</h5>
+                    <ul className="space-y-1">
+                      <li>• <strong>Side view</strong> at 90° angle for best analysis</li>
+                      <li>• Position camera 6-10 feet away</li>
+                      <li>• Keep camera steady (tripod recommended)</li>
+                      <li>• Ensure full body is visible in frame</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h5 className="font-medium mb-2">Performance:</h5>
+                    <ul className="space-y-1">
+                      <li>• Show complete volleyball technique</li>
+                      <li>• Perform 3-5 repetitions in 10 seconds</li>
+                      <li>• Use clear, deliberate movements</li>
+                      <li>• Good lighting on performer</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="mt-3 p-2 bg-blue-100 rounded text-xs text-blue-700">
+                  <strong>⚠️ Important:</strong> Videos with no movement or poor technique demonstration will be rejected by the AI analysis.
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <h4 className="font-medium text-yellow-900 mb-2">📊 Analysis Requirements</h4>
+                <ul className="text-sm text-yellow-800 space-y-1">
+                  <li>• Minimum 10 pixels of movement between frames</li>
+                  <li>• At least 3 frames showing volleyball technique</li>
+                  <li>• 30% minimum confidence for analysis completion</li>
                   <li>• Maximum file size: 50MB</li>
                 </ul>
               </div>
