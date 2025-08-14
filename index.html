@@ -5,7 +5,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
-    <!-- TensorFlow.js and Pose Detection Libraries with proper debugging -->
+    <!-- TensorFlow.js and Pose Detection Libraries with corrected versions -->
     <script>
       console.log('[MoveNet Debug] Starting library loading...');
       
@@ -42,14 +42,17 @@
       };
     </script>
     
+    <!-- Load TensorFlow.js first -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0/dist/tf.min.js" 
             onload="console.log('[MoveNet Debug] TensorFlow.js loaded'); window.moveNetDebug.tf = true; window.updateMoveNetStatus();" 
             onerror="console.error('[MoveNet Debug] TensorFlow.js failed to load from jsdelivr'); window.updateMoveNetStatus();"></script>
     
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@3.5.0/dist/pose-detection.min.js" 
+    <!-- Load Pose Detection with compatible version -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js" 
             onload="console.log('[MoveNet Debug] Pose Detection loaded'); window.moveNetDebug.poseDetection = true; window.updateMoveNetStatus();" 
             onerror="console.error('[MoveNet Debug] Pose Detection failed to load from jsdelivr'); window.updateMoveNetStatus();"></script>
     
+    <!-- MediaPipe (optional for fallback) -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.js" 
             onload="console.log('[MoveNet Debug] MediaPipe loaded'); window.moveNetDebug.mediapipe = true;" 
             onerror="console.error('[MoveNet Debug] MediaPipe failed to load');"></script>
