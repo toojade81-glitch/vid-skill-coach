@@ -91,8 +91,10 @@ const NewAttempt = () => {
       const totalScore = Object.values(finalScores).reduce((sum, score) => sum + score, 0);
       const maxScore = Object.keys(finalScores).length * 3;
       
-      let assessmentText = `=== VOLLEYBALL ${formData.skill.toUpperCase()} ASSESSMENT ===\n\n`;
-      assessmentText += `Overall Score: ${totalScore}/${maxScore} (${Math.round((totalScore / maxScore) * 100)}%)\n\n`;
+      let assessmentText = `=== VOLLEYBALL ${formData.skill.toUpperCase()} ASSESSMENT ===\n`;
+      assessmentText += `🤖 AI-ASSISTED EVALUATION (Human Review Required)\n\n`;
+      assessmentText += `Final Score: ${totalScore}/${maxScore} (${Math.round((totalScore / maxScore) * 100)}%)\n`;
+      assessmentText += `AI Confidence: ${Math.round(confidence * 100)}%\n\n`;
       assessmentText += `DETAILED SCORES:\n`;
       
       Object.entries(finalScores).forEach(([key, score]) => {
@@ -107,8 +109,12 @@ const NewAttempt = () => {
         assessmentText += `\nNOTES: ${formData.notes}\n`;
       }
       
-      assessmentText += `\n=== ANALYSIS REQUEST ===\n`;
-      assessmentText += `Please analyze this volleyball ${formData.skill.toLowerCase()} assessment and provide:\n`;
+      assessmentText += `\n⚠️ IMPORTANT: This assessment used AI assistance for initial analysis.\n`;
+      assessmentText += `Scores have been reviewed and validated by a qualified assessor.\n`;
+      assessmentText += `AI provides movement analysis; human expertise ensures accurate evaluation.\n\n`;
+      
+      assessmentText += `=== ANALYSIS REQUEST ===\n`;
+      assessmentText += `Please analyze this AI-assisted volleyball ${formData.skill.toLowerCase()} assessment and provide:\n`;
       assessmentText += `1. Key strengths identified\n`;
       assessmentText += `2. Primary areas for improvement\n`;
       assessmentText += `3. Specific drills or exercises to address weaknesses\n`;
@@ -303,11 +309,32 @@ const NewAttempt = () => {
 
         {step === "review" && (
           <div className="space-y-4">
+            <Card className="shadow-lg border-amber-200 bg-amber-50">
+              <CardHeader>
+                <CardTitle className="text-amber-800 flex items-center gap-2">
+                  🤖 AI-Assisted Assessment
+                </CardTitle>
+                <div className="text-sm text-amber-700 space-y-2">
+                  <p><strong>⚠️ Human Review Required:</strong> This AI analysis provides initial suggestions but requires assessor judgment for final scoring.</p>
+                  <p><strong>Confidence Level:</strong> {Math.round(confidence * 100)}% - Review all scores carefully</p>
+                  <div className="bg-amber-100 p-3 rounded-lg mt-3">
+                    <p className="text-xs font-medium">📋 Assessment Guidelines:</p>
+                    <ul className="text-xs mt-1 space-y-1">
+                      <li>• AI provides initial analysis based on movement patterns</li>
+                      <li>• Trained assessor must validate and adjust all scores</li>
+                      <li>• Reference frames show AI's detection points</li>
+                      <li>• Final assessment requires human expertise</li>
+                    </ul>
+                  </div>
+                </div>
+              </CardHeader>
+            </Card>
+            
             <Card className="shadow-lg">
               <CardHeader>
-                <CardTitle>Review & Adjust Scores</CardTitle>
+                <CardTitle>Review & Adjust AI Suggestions</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Confidence: {Math.round(confidence * 100)}%
+                  Modify the AI's suggested scores based on your expert assessment
                 </p>
               </CardHeader>
               <CardContent>

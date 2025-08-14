@@ -177,9 +177,25 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {} }
         </Card>
       )}
       
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+        <div className="flex items-start gap-3">
+          <div className="text-blue-600 text-2xl">🧠</div>
+          <div>
+            <h4 className="font-medium text-blue-900 mb-1">AI-Assisted Scoring</h4>
+            <p className="text-sm text-blue-800 leading-relaxed">
+              The AI has provided initial suggestions based on pose detection and movement analysis. 
+              <strong> These are recommendations only.</strong> Please review each score carefully using your coaching expertise and adjust as needed.
+            </p>
+            <div className="mt-2 text-xs text-blue-700 bg-blue-100 rounded px-2 py-1">
+              <strong>Note:</strong> AI cannot assess technique quality, ball contact, or timing - human judgment is essential.
+            </div>
+          </div>
+        </div>
+      </div>
+      
       <div className="flex items-center justify-between mb-4">
-        <div className="text-sm text-muted-foreground">
-          The AI has analyzed your technique. Adjust any scores that don't seem accurate.
+        <div className="text-sm font-medium text-foreground">
+          Adjust AI suggestions to reflect actual performance:
         </div>
         <Button 
           onClick={copyToClipboard}
@@ -196,12 +212,12 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {} }
         <Card key={key} className="p-4">
           <CardHeader className="pb-3">
             <CardTitle className="text-base leading-tight">
-              {criterion.name} — Score: {scores[key] || 0} — {criterion.descriptions[scores[key] as keyof typeof criterion.descriptions] || criterion.descriptions[0]}
+              {criterion.name} — <span className="text-amber-600">AI Suggestion: {scores[key] || 0}</span> — {criterion.descriptions[scores[key] as keyof typeof criterion.descriptions] || criterion.descriptions[0]}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label className="text-sm font-medium">Adjust Score</Label>
+              <Label className="text-sm font-medium">Your Final Score (Override AI Suggestion)</Label>
               <Slider
                 value={[scores[key] || 0]}
                 onValueChange={(value) => handleScoreChange(key, value)}
