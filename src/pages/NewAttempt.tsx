@@ -14,7 +14,6 @@ const NewAttempt = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     skill: "Setting" as "Setting" | "Digging",
-    target: "Center" as "Left" | "Center" | "Right",
     notes: ""
   });
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -77,7 +76,6 @@ const NewAttempt = () => {
         id: crypto.randomUUID(),
         date: new Date().toISOString(),
         skill: formData.skill,
-        target: formData.target,
         notes: formData.notes,
         autoScores,
         finalScores,
@@ -147,22 +145,6 @@ const NewAttempt = () => {
                 </div>
               </div>
 
-              <div>
-                <Label>Target Direction</Label>
-                <div className="flex gap-2 mt-2">
-                  {(["Left", "Center", "Right"] as const).map((target) => (
-                    <Button
-                      key={target}
-                      variant={formData.target === target ? "default" : "outline"}
-                      onClick={() => setFormData(prev => ({ ...prev, target }))}
-                      className="flex-1"
-                      size="sm"
-                    >
-                      {target}
-                    </Button>
-                  ))}
-                </div>
-              </div>
 
               <div>
                 <Label htmlFor="notes">Notes (Optional)</Label>
@@ -230,7 +212,6 @@ const NewAttempt = () => {
                 <RealMoveNetAnalyzer
                   videoFile={videoFile}
                   skill={formData.skill}
-                  target={formData.target}
                   onAnalysisComplete={handleAnalysisComplete}
                 />
               )}

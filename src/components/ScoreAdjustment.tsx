@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Copy, Check } from "lucide-react";
+import { toast } from "sonner";
 
 interface ScoreAdjustmentProps {
   skill: "Setting" | "Digging";
@@ -90,7 +93,9 @@ const SKILL_CRITERIA = {
 };
 
 const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {} }: ScoreAdjustmentProps) => {
-  const [scores, setScores] = useState(autoScores);
+  const [scores, setScores] = useState<Record<string, number>>(autoScores);
+  const [copied, setCopied] = useState(false);
+
   const criteria = SKILL_CRITERIA[skill];
 
   useEffect(() => {
@@ -104,6 +109,43 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {} }
   const handleScoreChange = (criterion: string, value: number[]) => {
     const newScores = { ...scores, [criterion]: value[0] };
     setScores(newScores);
+  };
+
+  const copyToClipboard = async () => {
+    try {
+      // Calculate total score
+      const totalScore = Object.values(scores).reduce((sum, score) => sum + score, 0);
+      const maxScore = Object.keys(scores).length * 3;
+      
+      // Generate formatted assessment text
+      let assessmentText = `=== VOLLEYBALL ${skill.toUpperCase()} ASSESSMENT ===\n\n`;
+      assessmentText += `Overall Score: ${totalScore}/${maxScore} (${Math.round((totalScore / maxScore) * 100)}%)\n\n`;
+      assessmentText += `DETAILED SCORES:\n`;
+      
+      Object.entries(scores).forEach(([key, score]) => {
+        const criterion = criteria[key as keyof typeof criteria];
+        if (criterion) {
+          assessmentText += `\n${criterion.name}: ${score}/3\n`;
+          assessmentText += `Description: ${criterion.descriptions[score as keyof typeof criterion.descriptions]}\n`;
+        }
+      });
+      
+      assessmentText += `\n=== ANALYSIS REQUEST ===\n`;
+      assessmentText += `Please analyze this volleyball ${skill.toLowerCase()} assessment and provide:\n`;
+      assessmentText += `1. Key strengths identified\n`;
+      assessmentText += `2. Primary areas for improvement\n`;
+      assessmentText += `3. Specific drills or exercises to address weaknesses\n`;
+      assessmentText += `4. Progressive training plan suggestions\n`;
+      assessmentText += `5. Tips for consistent performance improvement\n`;
+      
+      await navigator.clipboard.writeText(assessmentText);
+      setCopied(true);
+      toast.success("Assessment copied! Paste into ChatGPT for detailed feedback.");
+      
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      toast.error("Failed to copy to clipboard");
+    }
   };
 
   return (
@@ -135,8 +177,19 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {} }
         </Card>
       )}
       
-      <div className="text-sm text-muted-foreground">
-        The AI has analyzed your technique. Adjust any scores that don't seem accurate.
+      <div className="flex items-center justify-between mb-4">
+        <div className="text-sm text-muted-foreground">
+          The AI has analyzed your technique. Adjust any scores that don't seem accurate.
+        </div>
+        <Button 
+          onClick={copyToClipboard}
+          variant="outline" 
+          size="sm"
+          className="gap-2"
+        >
+          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          {copied ? "Copied!" : "Copy for GPT"}
+        </Button>
       </div>
       
       {Object.entries(criteria).map(([key, criterion]) => (

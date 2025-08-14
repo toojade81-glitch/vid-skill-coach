@@ -30,7 +30,6 @@ interface RubricFrames {
 interface RealMoveNetAnalyzerProps {
   videoFile: File | null;
   skill: "Setting" | "Digging";
-  target: "Left" | "Center" | "Right";
   onAnalysisComplete: (metrics: PoseMetrics, scores: Record<string, number>, confidence: number, rubricFrames: RubricFrames) => void;
 }
 
@@ -42,7 +41,7 @@ declare global {
   }
 }
 
-const RealMoveNetAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: RealMoveNetAnalyzerProps) => {
+const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveNetAnalyzerProps) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [isReady, setIsReady] = useState(false);
@@ -316,7 +315,7 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: R
         contactHeightRelTorso: skill === "Setting" ? 0.85 + Math.random() * 0.1 : 0.4 + Math.random() * 0.2,
         platformFlatness: skill === "Digging" ? 5 + Math.random() * 20 : 0,
         extensionSequence: confidence,
-        facingTarget: target === "Center" ? 0.8 + Math.random() * 0.2 : 0.6 + Math.random() * 0.3,
+        facingTarget: 0.8 + Math.random() * 0.2,
         stability: confidence,
         contactFrame: Math.floor(detectedFrames / 2)
       };
