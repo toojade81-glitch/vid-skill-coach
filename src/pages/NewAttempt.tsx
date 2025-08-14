@@ -9,6 +9,7 @@ import { ArrowLeft, Upload, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import RealMoveNetAnalyzer from "@/components/RealMoveNetAnalyzer";
 import ReferenceVideoAnalyzer from "@/components/ReferenceVideoAnalyzer";
+import ReferenceVideoUpload from "@/components/ReferenceVideoUpload";
 import ScoreAdjustment from "@/components/ScoreAdjustment";
 import { getSkillOptions } from '@/data/referenceVideos';
 
@@ -19,7 +20,9 @@ const NewAttempt = () => {
     notes: ""
   });
   const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [step, setStep] = useState<"form" | "analyze" | "review">("form");
+  const [referenceVideoUrl, setReferenceVideoUrl] = useState<string | null>(null);
+  const [useReferenceComparison, setUseReferenceComparison] = useState(false);
+  const [step, setStep] = useState<"form" | "reference" | "analyze" | "review">("form");
   const [autoScores, setAutoScores] = useState<Record<string, number>>({});
   const [finalScores, setFinalScores] = useState<Record<string, number>>({});
   const [metrics, setMetrics] = useState<any>(null);
@@ -226,16 +229,61 @@ const NewAttempt = () => {
                 />
               </div>
 
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="use-reference"
+                    checked={useReferenceComparison}
+                    onChange={(e) => setUseReferenceComparison(e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  <Label htmlFor="use-reference" className="text-sm">
+                    Use reference video comparison for better analysis
+                  </Label>
+                </div>
+
+                <Button
+                  onClick={() => setStep(useReferenceComparison ? "reference" : "analyze")}
+                  disabled={!canProceed}
+                  className="w-full"
+                  size="lg"
+                >
+                  Continue to {useReferenceComparison ? "Reference Video" : "Upload Video"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {step === "reference" && (
+          <div className="space-y-4">
+            <ReferenceVideoUpload
+              skill={formData.skill}
+              existingVideoUrl={referenceVideoUrl}
+              onReferenceVideoUploaded={(url) => {
+                setReferenceVideoUrl(url);
+                setStep("analyze");
+              }}
+            />
+            
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setStep("form")}
+                className="flex-1"
+              >
+                Back
+              </Button>
               <Button
                 onClick={() => setStep("analyze")}
-                disabled={!canProceed}
-                className="w-full"
-                size="lg"
+                disabled={!referenceVideoUrl}
+                className="flex-1"
               >
                 Continue to Upload Video
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
 
         {step === "analyze" && (
@@ -305,23 +353,44 @@ const NewAttempt = () => {
 
               {videoFile && (
                 <div className="space-y-4">
-                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                    <h4 className="font-medium text-green-900 mb-2">🎯 AI Movement Analysis</h4>
-                    <p className="text-sm text-green-800">
-                      Your video will be analyzed using AI pose detection to provide 
-                      scoring based on volleyball technique and movement quality.
-                    </p>
-                  </div>
-                  
-                  <RealMoveNetAnalyzer
-                    videoFile={videoFile}
-                    skill={formData.skill as "Setting" | "Digging"}
-                    onAnalysisComplete={(metrics, scores, confidence, frames) => {
-                      handleAnalysisComplete({
-                        metrics, scores, confidence, rubricFrames: frames
-                      });
-                    }}
-                  />
+                  {useReferenceComparison && referenceVideoUrl ? (
+                    <>
+                      <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                        <h4 className="font-medium text-green-900 mb-2">🎯 Reference Video Comparison</h4>
+                        <p className="text-sm text-green-800">
+                          Your video will be compared against the uploaded reference technique to provide 
+                          more accurate scoring and specific improvement suggestions.
+                        </p>
+                      </div>
+                      
+                      <ReferenceVideoAnalyzer
+                        selectedFile={videoFile}
+                        skill={formData.skill}
+                        referenceVideoUrl={referenceVideoUrl}
+                        onAnalysisComplete={handleAnalysisComplete}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <h4 className="font-medium text-blue-900 mb-2">🎯 AI Movement Analysis</h4>
+                        <p className="text-sm text-blue-800">
+                          Your video will be analyzed using AI pose detection to provide 
+                          scoring based on volleyball technique and movement quality.
+                        </p>
+                      </div>
+                      
+                      <RealMoveNetAnalyzer
+                        videoFile={videoFile}
+                        skill={formData.skill as "Setting" | "Digging"}
+                        onAnalysisComplete={(metrics, scores, confidence, frames) => {
+                          handleAnalysisComplete({
+                            metrics, scores, confidence, rubricFrames: frames
+                          });
+                        }}
+                      />
+                    </>
+                  )}
                 </div>
               )}
             </CardContent>

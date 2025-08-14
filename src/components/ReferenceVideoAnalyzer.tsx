@@ -11,6 +11,7 @@ import { compareKeypointSequences, KeypointFrame, ComparisonResult } from '@/uti
 interface ReferenceVideoAnalyzerProps {
   selectedFile: File | null;
   skill: string;
+  referenceVideoUrl: string | null;
   onAnalysisComplete: (results: any) => void;
 }
 
@@ -24,7 +25,8 @@ declare global {
 
 const ReferenceVideoAnalyzer: React.FC<ReferenceVideoAnalyzerProps> = ({ 
   selectedFile, 
-  skill, 
+  skill,
+  referenceVideoUrl, 
   onAnalysisComplete 
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -224,7 +226,7 @@ const ReferenceVideoAnalyzer: React.FC<ReferenceVideoAnalyzerProps> = ({
   };
 
   const analyzeVideo = useCallback(async () => {
-    if (!detector || !selectedFile || !videoRef.current) return;
+    if (!detector || !selectedFile || !videoRef.current || !referenceVideoUrl) return;
 
     setIsLoading(true);
     setAnalysisPhase('analyzing');
@@ -255,19 +257,27 @@ const ReferenceVideoAnalyzer: React.FC<ReferenceVideoAnalyzerProps> = ({
       setProgress(50);
 
       // Load and analyze reference video if available
-      const referenceVideo = getReferenceVideo(skill);
       let comparison: ComparisonResult | null = null;
 
-      if (referenceVideo) {
+      if (referenceVideoUrl && referenceVideoRef.current) {
         console.log("Loading reference video for comparison...");
         
-        // For demo purposes, simulate reference video analysis
-        // In production, you would load actual reference videos
-        const mockReferenceFrames: KeypointFrame[] = generateMockReferenceFrames(skill);
-        setReferenceKeyframes(mockReferenceFrames);
+        referenceVideoRef.current.src = referenceVideoUrl;
         
-        if (mockReferenceFrames.length > 0 && userFrames.length > 0) {
-          comparison = compareKeypointSequences(userFrames, mockReferenceFrames);
+        await new Promise(resolve => {
+          const onLoadedMetadata = () => {
+            referenceVideoRef.current?.removeEventListener('loadedmetadata', onLoadedMetadata);
+            resolve(void 0);
+          };
+          referenceVideoRef.current?.addEventListener('loadedmetadata', onLoadedMetadata);
+        });
+
+        // Analyze reference video
+        const referenceFrames = await analyzeVideoFrames(referenceVideoRef.current);
+        setReferenceKeyframes(referenceFrames);
+        
+        if (referenceFrames.length > 0 && userFrames.length > 0) {
+          comparison = compareKeypointSequences(userFrames, referenceFrames);
           setComparisonResult(comparison);
           console.log("Comparison result:", comparison);
         }
@@ -391,10 +401,10 @@ const ReferenceVideoAnalyzer: React.FC<ReferenceVideoAnalyzerProps> = ({
 
   // Load video when file changes
   useEffect(() => {
-    if (selectedFile && detector) {
+    if (selectedFile && detector && referenceVideoUrl) {
       analyzeVideo();
     }
-  }, [selectedFile, detector, analyzeVideo]);
+  }, [selectedFile, detector, referenceVideoUrl, analyzeVideo]);
 
   return (
     <div className="space-y-4">
