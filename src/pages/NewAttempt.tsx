@@ -15,7 +15,7 @@ import { getSkillOptions } from '@/data/referenceVideos';
 const NewAttempt = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    skill: "Serve",
+    skill: "Setting",
     notes: ""
   });
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -306,17 +306,21 @@ const NewAttempt = () => {
               {videoFile && (
                 <div className="space-y-4">
                   <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                    <h4 className="font-medium text-green-900 mb-2">🎯 Reference Video Analysis</h4>
+                    <h4 className="font-medium text-green-900 mb-2">🎯 AI Movement Analysis</h4>
                     <p className="text-sm text-green-800">
-                      Your video will be compared against expert {formData.skill.toLowerCase()} technique to provide 
-                      more accurate scoring and specific improvement suggestions.
+                      Your video will be analyzed using AI pose detection to provide 
+                      scoring based on volleyball technique and movement quality.
                     </p>
                   </div>
                   
-                  <ReferenceVideoAnalyzer
-                    selectedFile={videoFile}
-                    skill={formData.skill}
-                    onAnalysisComplete={handleAnalysisComplete}
+                  <RealMoveNetAnalyzer
+                    videoFile={videoFile}
+                    skill={formData.skill as "Setting" | "Digging"}
+                    onAnalysisComplete={(metrics, scores, confidence, frames) => {
+                      handleAnalysisComplete({
+                        metrics, scores, confidence, rubricFrames: frames
+                      });
+                    }}
                   />
                 </div>
               )}
