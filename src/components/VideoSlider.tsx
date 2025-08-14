@@ -74,54 +74,42 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
       setLoadingProgress("Creating video URL...");
       
       try {
-        // Create blob URL with proper error handling
+        // Create blob URL - keep it simple
         const url = URL.createObjectURL(videoFile);
         cleanupUrl = url;
         
         // Generate unique key to force video element refresh
-        const key = `${videoFile.name}-${videoFile.size}-${videoFile.lastModified}-${Date.now()}`;
+        const key = `${videoFile.name}-${videoFile.size}-${videoFile.lastModified}`;
         setVideoKey(key);
         
         console.log("🔗 Created blob URL:", url);
-        console.log("🔑 Video key:", key);
-        console.log("📁 File details:", {
-          type: videoFile.type,
-          size: `${(videoFile.size / 1024 / 1024).toFixed(2)}MB`
-        });
+        console.log("📁 File:", videoFile.name, `${(videoFile.size / 1024 / 1024).toFixed(2)}MB`);
         
-        // Directly set the video URL - blob URLs don't need validation
+        // Set URL immediately 
         setVideoUrl(url);
-        setLoadingProgress("Video URL ready, loading...");
+        setLoadingProgress("Loading video...");
 
-        // Shorter timeout since we're not doing network validation
+        // Timeout for stuck loading 
         timeoutId = setTimeout(() => {
-          console.warn("⏰ Video loading timeout reached after 5 seconds");
+          console.warn("⏰ Video loading timeout");
           const video = videoRef.current;
           if (video && isLoading) {
-            console.log("🔍 Timeout state check:", {
-              src: video.src,
+            console.log("Video state:", {
               readyState: video.readyState,
-              networkState: video.networkState,
-              error: video.error,
               duration: video.duration,
-              videoWidth: video.videoWidth,
-              videoHeight: video.videoHeight,
-              currentTime: video.currentTime,
-              buffered: video.buffered.length > 0 ? `${video.buffered.end(0)}s` : "none"
+              error: video.error
             });
             
             if (video.error) {
-              setError(`Video error: ${video.error.message} (Code: ${video.error.code})`);
-              setIsLoading(false);
+              setError(`Video error: ${video.error.message}`);
             } else if (video.duration && video.duration > 0) {
-              // Video is actually ready but events didn't fire properly
-              console.log("🔧 Force completing video setup - video appears ready");
+              // Video is ready, just force it
+              console.log("Force ready");
               handleVideoReady();
             } else {
-              console.log("❌ Video still not ready after timeout");
-              setError("Video format may not be supported or file is corrupted");
-              setIsLoading(false);
+              setError("Video format may not be supported");
             }
+            setIsLoading(false);
           }
         }, 5000);
 
@@ -240,20 +228,10 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
 
   const togglePlayPause = () => {
     if (videoRef.current) {
-      const video = videoRef.current;
-      console.log("🎮 Toggle play/pause:", {
-        currentState: isPlaying ? "playing" : "paused",
-        currentTime: video.currentTime,
-        duration: video.duration,
-        readyState: video.readyState
-      });
-      
       if (isPlaying) {
-        video.pause();
+        videoRef.current.pause();
       } else {
-        video.play().catch(err => {
-          console.error("❌ Play failed:", err);
-        });
+        videoRef.current.play();
       }
       setIsPlaying(!isPlaying);
     }
@@ -313,14 +291,8 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
           onCanPlayThrough={handleCanPlayThrough}
           onError={handleError}
           onTimeUpdate={handleTimeUpdate}
-          onPlay={() => {
-            console.log("▶️ Video play event fired");
-            setIsPlaying(true);
-          }}
-          onPause={() => {
-            console.log("⏸️ Video pause event fired");
-            setIsPlaying(false);
-          }}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
           preload="auto"
           controls={false}
           muted
