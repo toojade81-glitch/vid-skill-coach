@@ -5,10 +5,11 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
-    <!-- TensorFlow.js and MoveNet Libraries -->
+    <!-- TensorFlow.js and Pose Detection Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@3.5.0/dist/pose-detection.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.js"></script>
+    
     <title>Volleyball Skill Assessor</title>
     <meta name="description" content="AI-powered volleyball skill assessment with on-device analysis" />
     <meta name="author" content="Lovable" />
@@ -21,9 +22,18 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@lovable_dev" />
     <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
-
-    <!-- Global MoveNet Loader with Fallback CDNs -->
-    <script>(function(){const t={tf:["https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0/dist/tf.min.js","https://unpkg.com/@tensorflow/tfjs@4.18.0/dist/tf.min.js"],posedet:["https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@3.5.0/dist/pose-detection.min.js","https://unpkg.com/@tensorflow-models/pose-detection@3.5.0/dist/pose-detection.min.js"]};function n(t){const e=document.getElementById("movenetStatus");e&&(e.textContent=t)}function o(e){return new Promise((t,n)=>{const o=document.createElement("script");o.src=e,o.defer=!0,o.onload=()=>t(e),o.onerror=()=>n(e),document.head.appendChild(o)})}async function c(e){let t;for(const n of e)try{return await o(n),n}catch(e){t=e}throw new Error("All CDNs failed")}async function a(){if(window.tf)return;n("Loading TensorFlow.js…"),await c(t.tf);try{await tf.setBackend("webgl")}catch(e){}await tf.ready()}async function s(){if(window.poseDetection)return;n("Loading Pose Detection…"),await c(t.posedet)}window.loadMoveNet=async function(){try{return await a(),await s(),window.poseDetection?(n("MoveNet libraries ready."),!0):(()=>{throw new Error("poseDetection missing")})()}catch(t){return n("MoveNet load error. Check HTTPS/CDN allowlist."),console.error("[MoveNet loader]",t),!1}};document.addEventListener("DOMContentLoaded",()=>{window.loadMoveNet()})})();</script>
+    
+    <!-- MoveNet Status Update -->
+    <script>
+      window.addEventListener('load', () => {
+        const statusEl = document.getElementById('movenetStatus');
+        if (window.tf && window.poseDetection) {
+          if (statusEl) statusEl.textContent = 'MoveNet libraries ready.';
+        } else {
+          if (statusEl) statusEl.textContent = 'MoveNet load error. Check HTTPS/CDN allowlist.';
+        }
+      });
+    </script>
   </head>
 
   <body>
