@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
-import { Play, Pause } from "lucide-react";
+import { Play, Pause, AlertCircle } from "lucide-react";
 
 interface VideoSliderProps {
   videoFile: File;
@@ -13,118 +13,152 @@ interface VideoSliderProps {
 const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 0 }: VideoSliderProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [videoSrc, setVideoSrc] = useState<string>("");
+  const [videoDataUrl, setVideoDataUrl] = useState<string>("");
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(initialTime);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>("");
+  const [loadingProgress, setLoadingProgress] = useState(0);
 
-  // Create video URL when component mounts or videoFile changes
+  // Supported video formats
+  const supportedFormats = ['video/mp4', 'video/webm', 'video/ogg', 'video/avi', 'video/mov', 'video/quicktime'];
+
   useEffect(() => {
-    console.log("🎬 VideoSlider useEffect triggered", {
-      hasVideoFile: !!videoFile,
-      fileName: videoFile?.name,
-      fileSize: videoFile?.size,
-      fileType: videoFile?.type
-    });
-
     if (!videoFile) {
-      console.log("❌ No video file provided to VideoSlider");
       setError("No video file provided");
       setIsLoading(false);
-      setVideoSrc("");
       return;
     }
 
-    console.log("📁 Processing video file:", {
+    console.log("🎬 Processing video file:", {
       name: videoFile.name,
       type: videoFile.type,
-      size: `${(videoFile.size / 1024 / 1024).toFixed(2)}MB`,
-      lastModified: new Date(videoFile.lastModified).toISOString()
+      size: `${(videoFile.size / 1024 / 1024).toFixed(2)}MB`
     });
-    
+
+    // Check file format
+    if (!supportedFormats.includes(videoFile.type) && !videoFile.name.toLowerCase().match(/\.(mp4|webm|ogg|avi|mov)$/)) {
+      setError(`Unsupported video format: ${videoFile.type}. Please use MP4, WebM, or OGG.`);
+      setIsLoading(false);
+      return;
+    }
+
+    // Check file size (max 100MB)
+    if (videoFile.size > 100 * 1024 * 1024) {
+      setError("Video file too large. Please use a file smaller than 100MB.");
+      setIsLoading(false);
+      return;
+    }
+
     setError("");
     setIsLoading(true);
+    setLoadingProgress(0);
 
+    // Method 1: Try FileReader with data URL (works better for some formats)
+    const reader = new FileReader();
+    
+    reader.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const progress = (e.loaded / e.total) * 100;
+        setLoadingProgress(progress);
+        console.log(`📊 Loading progress: ${progress.toFixed(1)}%`);
+      }
+    };
+
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      if (dataUrl) {
+        console.log("✅ FileReader data URL created successfully");
+        setVideoDataUrl(dataUrl);
+        setLoadingProgress(100);
+      } else {
+        console.error("❌ FileReader failed to create data URL");
+        tryBlobUrl();
+      }
+    };
+
+    reader.onerror = (e) => {
+      console.error("❌ FileReader error:", e);
+      tryBlobUrl();
+    };
+
+    // Fallback method: Try blob URL if FileReader fails
+    const tryBlobUrl = () => {
+      try {
+        console.log("🔄 Trying blob URL fallback...");
+        const blobUrl = URL.createObjectURL(videoFile);
+        setVideoDataUrl(blobUrl);
+        console.log("✅ Blob URL created as fallback");
+      } catch (error) {
+        console.error("❌ Blob URL fallback failed:", error);
+        setError("Failed to load video. Your browser may not support this video format.");
+        setIsLoading(false);
+      }
+    };
+
+    // Start reading the file
     try {
-      // Create object URL for the video file
-      const videoUrl = URL.createObjectURL(videoFile);
-      console.log("🔗 Created video URL successfully:", videoUrl);
-
-      // Set the video src - React will handle setting it on the video element
-      setVideoSrc(videoUrl);
-      console.log("✅ Video src state updated");
-
-      // Cleanup function
-      return () => {
-        URL.revokeObjectURL(videoUrl);
-        console.log("🧹 Cleaned up video URL:", videoUrl);
-      };
+      reader.readAsDataURL(videoFile);
     } catch (error) {
-      console.error("❌ Error creating video URL:", error);
-      setError(`Failed to create video URL: ${error}`);
-      setIsLoading(false);
+      console.error("❌ FileReader start failed:", error);
+      tryBlobUrl();
     }
+
+    // Cleanup
+    return () => {
+      if (videoDataUrl && videoDataUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(videoDataUrl);
+      }
+    };
   }, [videoFile]);
 
-  const handleVideoLoaded = () => {
+  const handleVideoReady = () => {
     const video = videoRef.current;
-    console.log("🎉 handleVideoLoaded called", {
-      hasVideo: !!video,
-      duration: video?.duration,
-      readyState: video?.readyState,
-      videoWidth: video?.videoWidth,
-      videoHeight: video?.videoHeight,
-      src: video?.src,
-      videoSrcState: videoSrc
+    if (!video) return;
+
+    console.log("🎉 Video ready event:", {
+      duration: video.duration,
+      videoWidth: video.videoWidth,
+      videoHeight: video.videoHeight,
+      readyState: video.readyState
     });
-    
-    if (video && video.duration && video.duration > 0) {
-      console.log("✅ Video loaded successfully:", {
-        duration: video.duration,
-        width: video.videoWidth,
-        height: video.videoHeight,
-        readyState: video.readyState
-      });
-      
+
+    if (video.duration && video.duration > 0) {
       setDuration(video.duration);
       setIsLoading(false);
       
-      // Set initial time if provided
       if (initialTime > 0 && initialTime < video.duration) {
-        console.log("⏰ Setting initial time:", initialTime);
         video.currentTime = initialTime;
         setCurrentTime(initialTime);
       }
-    } else {
-      console.warn("⚠️ Video loaded but duration not available yet", {
-        duration: video?.duration,
-        readyState: video?.readyState
-      });
-      // Try again after a short delay
-      setTimeout(() => {
-        if (video && video.duration > 0) {
-          console.log("✅ Video ready after delay");
-          setDuration(video.duration);
-          setIsLoading(false);
-        }
-      }, 100);
     }
   };
 
   const handleVideoError = (e: any) => {
-    console.error("❌ Video loading error:", e);
     const video = videoRef.current;
-    console.error("Video error details:", {
-      error: video?.error,
-      errorCode: video?.error?.code,
-      errorMessage: video?.error?.message,
-      src: video?.src,
-      readyState: video?.readyState,
-      networkState: video?.networkState
-    });
-    setError(`Failed to load video: ${video?.error?.message || 'Unknown error'}`);
+    const errorCode = video?.error?.code;
+    let errorMessage = "Unknown video error";
+
+    switch (errorCode) {
+      case 1:
+        errorMessage = "Video loading was aborted";
+        break;
+      case 2:
+        errorMessage = "Network error while loading video";
+        break;
+      case 3:
+        errorMessage = "Video format not supported by your browser";
+        break;
+      case 4:
+        errorMessage = "Video file not found or corrupted";
+        break;
+      default:
+        errorMessage = video?.error?.message || "Video playback error";
+    }
+
+    console.error("❌ Video error:", { code: errorCode, message: errorMessage });
+    setError(errorMessage);
     setIsLoading(false);
   };
 
@@ -164,27 +198,16 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
 
   const togglePlayPause = () => {
     const video = videoRef.current;
-    console.log("🎮 togglePlayPause called", {
-      hasVideo: !!video,
-      isPlaying,
-      currentTime: video?.currentTime,
-      duration: video?.duration,
-      readyState: video?.readyState
-    });
-    
     if (video) {
       if (isPlaying) {
-        console.log("⏸️ Pausing video");
         video.pause();
       } else {
-        console.log("▶️ Playing video");
         video.play().catch(err => {
           console.error("❌ Play failed:", err);
+          setError("Playback failed. Try a different video format.");
         });
       }
       setIsPlaying(!isPlaying);
-    } else {
-      console.error("❌ Video ref is null in togglePlayPause");
     }
   };
 
@@ -196,21 +219,36 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
 
   if (error) {
     return (
-      <div className={`bg-destructive/10 border border-destructive/20 rounded-lg p-4 text-center ${className}`}>
+      <div className={`bg-destructive/10 border border-destructive/20 rounded-lg p-4 ${className}`}>
+        <div className="flex items-center gap-2 mb-2">
+          <AlertCircle className="h-4 w-4 text-destructive" />
+          <div className="text-sm font-medium text-destructive">Video Loading Error</div>
+        </div>
         <div className="text-sm text-destructive mb-2">{error}</div>
-        <div className="text-xs text-muted-foreground mb-2">
+        <div className="text-xs text-muted-foreground mb-3">
           File: {videoFile?.name} ({videoFile ? (videoFile.size / 1024 / 1024).toFixed(1) : 0}MB, {videoFile?.type})
         </div>
-        {/* Add a fallback basic video element */}
-        <div className="mt-2">
-          <div className="text-xs text-muted-foreground mb-1">Fallback player:</div>
+        
+        {/* Browser compatibility check */}
+        <div className="bg-yellow-50 border border-yellow-200 rounded p-2 mb-2">
+          <div className="text-xs font-medium text-yellow-800 mb-1">🔧 Troubleshooting:</div>
+          <div className="text-xs text-yellow-700 space-y-1">
+            <div>• Try converting to MP4 with H.264 codec</div>
+            <div>• Ensure file is not corrupted</div>
+            <div>• Try a different browser (Chrome, Firefox, Safari)</div>
+          </div>
+        </div>
+
+        {/* Simple fallback player */}
+        <div className="border rounded p-2">
+          <div className="text-xs text-muted-foreground mb-1">Basic HTML5 Player:</div>
           <video
             controls
-            className="w-full h-24 rounded border"
-            src={videoSrc || (videoFile ? URL.createObjectURL(videoFile) : '')}
-            playsInline
-            muted
+            className="w-full h-20 rounded"
+            preload="metadata"
           >
+            <source src={videoDataUrl} type={videoFile?.type} />
+            <source src={URL.createObjectURL(videoFile)} type={videoFile?.type} />
             Your browser does not support video playback.
           </video>
         </div>
@@ -223,7 +261,15 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
       <div className={`bg-muted rounded-lg p-4 text-center ${className}`}>
         <div className="animate-pulse">
           <div className="w-full h-32 bg-muted-foreground/20 rounded mb-2"></div>
-          <div className="text-sm text-muted-foreground">Loading video...</div>
+          <div className="text-sm text-muted-foreground mb-1">
+            Loading video... {loadingProgress.toFixed(0)}%
+          </div>
+          <div className="w-full bg-muted-foreground/20 rounded-full h-1">
+            <div 
+              className="bg-primary h-1 rounded-full transition-all duration-300" 
+              style={{ width: `${loadingProgress}%` }}
+            ></div>
+          </div>
         </div>
       </div>
     );
@@ -234,24 +280,20 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
       <div className="relative">
         <video
           ref={videoRef}
-          src={videoSrc}
+          src={videoDataUrl}
           className="w-full h-32 object-cover rounded-lg border border-border"
-          onLoadedMetadata={handleVideoLoaded}
-          onLoadedData={handleVideoLoaded}
-          onCanPlay={handleVideoLoaded}
+          onLoadedMetadata={handleVideoReady}
+          onLoadedData={handleVideoReady}
+          onCanPlay={handleVideoReady}
+          onCanPlayThrough={handleVideoReady}
           onError={handleVideoError}
           onTimeUpdate={handleTimeUpdate}
-          onPlay={() => {
-            console.log("▶️ Video play event");
-            setIsPlaying(true);
-          }}
-          onPause={() => {
-            console.log("⏸️ Video pause event");
-            setIsPlaying(false);
-          }}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
           muted
           playsInline
-          preload="metadata"
+          preload="auto"
+          crossOrigin="anonymous"
         />
         <canvas
           ref={canvasRef}
