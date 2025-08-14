@@ -18,18 +18,14 @@ interface PoseMetrics {
 }
 
 interface RubricFrames {
-  readyFootwork?: string;
-  handShapeContact?: string;
-  alignmentExtension?: string;
-  followThroughControl?: string;
   readyPlatform?: string;
   contactAngle?: string;
-  legDriveShoulder?: string;
+  followThroughControl?: string;
 }
 
 interface RealMoveNetAnalyzerProps {
   videoFile: File | null;
-  skill: "Setting" | "Digging";
+  skill: "Digging";
   onAnalysisComplete: (metrics: PoseMetrics, scores: Record<string, number>, confidence: number, rubricFrames: RubricFrames) => void;
 }
 
@@ -125,32 +121,8 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       y: (leftHip.y + rightHip.y) / 2
     };
     
-    // Detect volleyball-specific poses
-    if (skill === 'Setting') {
-      // Ready position: early in video, stable stance
-      if (timePercent < 0.3) {
-        return 'readyFootwork';
-      }
-      
-      // Hand shape/contact: hands above shoulders
-      if (leftWrist && rightWrist && leftWrist.y < shoulderCenter.y && rightWrist.y < shoulderCenter.y) {
-        return 'handShapeContact';
-      }
-      
-      // Extension: peak arm extension moment
-      if (leftElbow && rightElbow && leftWrist && rightWrist) {
-        const armExtension = Math.abs(leftWrist.y - leftElbow.y) + Math.abs(rightWrist.y - rightElbow.y);
-        if (armExtension > 100 && timePercent > 0.3 && timePercent < 0.7) {
-          return 'alignmentExtension';
-        }
-      }
-      
-      // Follow-through: later in video
-      if (timePercent > 0.65) {
-        return 'followThroughControl';
-      }
-      
-    } else if (skill === 'Digging') {
+    // Detect volleyball-specific poses for Digging
+    if (skill === 'Digging') {
       // Ready platform: early position, arms down
       if (timePercent < 0.3 && leftWrist && rightWrist && leftWrist.y > shoulderCenter.y) {
         return 'readyPlatform';
@@ -164,9 +136,9 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         }
       }
       
-      // Leg drive/shoulder: knees bent, active stance
-      if (leftKnee && rightKnee && leftKnee.y < hipCenter.y - 20) {
-        return 'legDriveShoulder';
+      // Follow-through: later in video
+      if (timePercent > 0.65) {
+        return 'followThroughControl';
       }
     }
     
@@ -198,50 +170,7 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
     
     let score = 1; // Start with base score
     
-    if (skill === 'Setting') {
-      if (poseType === 'readyFootwork') {
-        // Check stance width and knee bend
-        const stanceWidth = Math.abs((leftAnkle?.x || 0) - (rightAnkle?.x || 0));
-        const avgKneeHeight = ((leftKnee?.y || 0) + (rightKnee?.y || 0)) / 2;
-        const avgHipHeight = ((leftHip.y + rightHip.y) / 2);
-        const kneeBend = avgHipHeight - avgKneeHeight;
-        
-        if (stanceWidth > 60 && kneeBend > 40) score += 1; // Good stance
-        if (kneeBend > 70 && stanceWidth > 80) score += 1; // Excellent knee bend and stance
-      }
-      
-      else if (poseType === 'handShapeContact') {
-        // Check hand position and triangle formation
-        const handsAboveShoulders = leftWrist && rightWrist && 
-          leftWrist.y < leftShoulder.y && rightWrist.y < rightShoulder.y;
-        const handDistance = leftWrist && rightWrist ? 
-          Math.abs(leftWrist.x - rightWrist.x) : 0;
-        
-        if (handsAboveShoulders && handDistance > 30) score += 1; // Must have hands up AND proper width
-        if (handDistance > 40 && handDistance < 70) score += 1; // Stricter triangle width
-      }
-      
-      else if (poseType === 'alignmentExtension') {
-        // Check body alignment and extension
-        const shoulderLevel = Math.abs(leftShoulder.y - rightShoulder.y);
-        const hipLevel = Math.abs(leftHip.y - rightHip.y);
-        const bodyUpright = Math.abs((leftShoulder.x + rightShoulder.x) / 2 - (leftHip.x + rightHip.x) / 2);
-        
-        if (shoulderLevel < 15 && hipLevel < 15 && bodyUpright < 25) score += 1; // Stricter alignment
-        if (shoulderLevel < 10 && hipLevel < 10 && bodyUpright < 15) score += 1; // Excellent alignment
-      }
-      
-      else if (poseType === 'followThroughControl') {
-        // Check follow-through position
-        const wristExtension = leftWrist && rightWrist && leftElbow && rightElbow ?
-          (Math.abs(leftWrist.y - leftElbow.y) + Math.abs(rightWrist.y - rightElbow.y)) / 2 : 0;
-        
-        if (wristExtension > 80) score += 1; // Good extension (stricter)
-        if (wristExtension > 110) score += 1; // Excellent extension
-      }
-    }
-    
-    else if (skill === 'Digging') {
+    if (skill === 'Digging') {
       if (poseType === 'readyPlatform') {
         // Check platform formation and stance
         const armLevel = leftWrist && rightWrist ? 
@@ -262,14 +191,13 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         if (elbowExtension > 90) score += 1; // Fully extended
       }
       
-      else if (poseType === 'legDriveShoulder') {
-        // Check leg drive and shoulder position
-        const avgKneeHeight = ((leftKnee?.y || 0) + (rightKnee?.y || 0)) / 2;
-        const avgHipHeight = (leftHip.y + rightHip.y) / 2;
-        const kneeBend = avgHipHeight - avgKneeHeight;
+      else if (poseType === 'followThroughControl') {
+        // Check follow-through position
+        const wristExtension = leftWrist && rightWrist && leftElbow && rightElbow ?
+          (Math.abs(leftWrist.y - leftElbow.y) + Math.abs(rightWrist.y - rightElbow.y)) / 2 : 0;
         
-        if (kneeBend > 50) score += 1; // Good knee bend (stricter)
-        if (kneeBend > 80) score += 1; // Excellent drive position
+        if (wristExtension > 80) score += 1; // Good extension (stricter)
+        if (wristExtension > 110) score += 1; // Excellent extension
       }
     }
     
@@ -456,9 +384,7 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       const rubricFrames: RubricFrames = {};
       
       // Track which rubric components we've captured
-      const neededComponents = skill === 'Setting' 
-        ? ['readyFootwork', 'handShapeContact', 'alignmentExtension', 'followThroughControl']
-        : ['readyPlatform', 'contactAngle', 'legDriveShoulder', 'followThroughControl'];
+      const neededComponents = ['readyPlatform', 'contactAngle', 'followThroughControl'];
 
       console.log(`🎬 Analyzing ${duration.toFixed(1)}s video with ${Math.ceil(duration / frameStep)} frames`);
 
@@ -580,9 +506,7 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       });
       
       // Ensure all components have scores (fallback to basic detection rate)
-      const allComponents = skill === 'Setting' 
-        ? ['readyFootwork', 'handShapeContact', 'alignmentExtension', 'followThroughControl']
-        : ['readyPlatform', 'contactAngle', 'legDriveShoulder', 'followThroughControl'];
+      const allComponents = ['readyPlatform', 'contactAngle', 'followThroughControl'];
       
       // Calculate realistic confidence based on movement and volleyball actions
       const avgMovement = totalMovement / Math.max(1, detectedFrames);
@@ -632,13 +556,9 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       // Generate pose metrics (keeping existing structure)
       const baseScore = Math.floor(confidence * 3); // 0-3 scale
       const scores = {
-        readyFootwork: finalScores.readyFootwork || baseScore,
-        handShapeContact: finalScores.handShapeContact || (skill === 'Setting' ? Math.min(3, baseScore + 1) : baseScore),
-        alignmentExtension: finalScores.alignmentExtension || baseScore,
-        followThroughControl: finalScores.followThroughControl || baseScore,
-        readyPlatform: finalScores.readyPlatform || (skill === 'Digging' ? Math.min(3, baseScore + 1) : baseScore),
-        contactAngle: finalScores.contactAngle || (skill === 'Digging' ? baseScore : 0),
-        legDriveShoulder: finalScores.legDriveShoulder || (skill === 'Digging' ? baseScore : 0)
+        readyPlatform: finalScores.readyPlatform || Math.min(3, baseScore + 1),
+        contactAngle: finalScores.contactAngle || baseScore,
+        followThroughControl: finalScores.followThroughControl || baseScore
       };
 
       // Generate pose metrics
@@ -647,9 +567,9 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         detected_frames: detectedFrames,
         kneeFlex: 20 + Math.random() * 15,
         elbowLock: confidence > 0.7,
-        wristAboveForehead: skill === "Setting" && confidence > 0.6,
-        contactHeightRelTorso: skill === "Setting" ? 0.85 + Math.random() * 0.1 : 0.4 + Math.random() * 0.2,
-        platformFlatness: skill === "Digging" ? 5 + Math.random() * 20 : 0,
+        wristAboveForehead: false,
+        contactHeightRelTorso: 0.4 + Math.random() * 0.2,
+        platformFlatness: 5 + Math.random() * 20,
         extensionSequence: confidence,
         facingTarget: 0.8 + Math.random() * 0.2,
         stability: confidence,

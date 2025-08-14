@@ -16,7 +16,7 @@ import { getSkillOptions } from '@/data/referenceVideos';
 const NewAttempt = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    skill: "Setting",
+    skill: "Digging" as const,
     notes: ""
   });
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -201,20 +201,11 @@ const NewAttempt = () => {
               <CardTitle>Assessment Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <Label>Skill</Label>
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  {getSkillOptions().map(skill => (
-                    <Button
-                      key={skill}
-                      variant={formData.skill === skill ? "default" : "outline"}
-                      onClick={() => setFormData(prev => ({ ...prev, skill }))}
-                      className="text-sm"
-                    >
-                      {skill}
-                    </Button>
-                  ))}
-                </div>
+              <div className="text-center p-4 bg-primary/5 rounded-lg">
+                <h3 className="text-lg font-semibold text-primary mb-2">Digging Assessment</h3>
+                <p className="text-sm text-muted-foreground">
+                  Comprehensive AI-assisted evaluation of volleyball digging technique
+                </p>
               </div>
 
 
@@ -386,7 +377,7 @@ const NewAttempt = () => {
                       
                       <RealMoveNetAnalyzer
                         videoFile={videoFile}
-                        skill={formData.skill as "Setting" | "Digging"}
+                        skill="Digging"
                         onAnalysisComplete={(metrics, scores, confidence, frames) => {
                           handleAnalysisComplete({
                             metrics, scores, confidence, rubricFrames: frames

@@ -8,12 +8,6 @@ export interface ReferenceVideo {
 
 export const referenceVideos: ReferenceVideo[] = [
   {
-    skill: "Setting",
-    url: "/reference-videos/setting-reference.mp4",
-    description: "Proper setting technique",
-    keyPoints: ["Hand position", "Body positioning", "Release point", "Trajectory"]
-  },
-  {
     skill: "Digging",
     url: "/reference-videos/digging-reference.mp4",
     description: "Proper digging/defensive technique", 

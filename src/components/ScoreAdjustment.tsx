@@ -14,44 +14,6 @@ interface ScoreAdjustmentProps {
 }
 
 const SKILL_CRITERIA = {
-  Setting: {
-    readyFootwork: {
-      name: "Ready Position & Footwork",
-      descriptions: {
-        0: "No ready stance; feet stationary; poor positioning under ball.",
-        1: "Ready stance inconsistent; slow or incomplete movement to get under ball.",
-        2: "Consistent low stance; some movement to adjust, minor positioning errors.",
-        3: "Consistently low, balanced stance; quick, small steps to get perfectly under ball."
-      }
-    },
-    handShapeContact: {
-      name: "Hand Shape & Contact Zone",
-      descriptions: {
-        0: "Hands apart or flat; contact well below chin/neck.",
-        1: "Hands form partial shape; contact at chin/neck level.",
-        2: "Triangle/window formed; contact just above forehead but slightly low.",
-        3: "Perfect triangle/window; contact above forehead in correct \"setting zone.\""
-      }
-    },
-    alignmentExtension: {
-      name: "Body Alignment & Extension", 
-      descriptions: {
-        0: "Shoulders/hips misaligned to target; no upward extension.",
-        1: "Minor alignment; limited knee/hip/arm extension.",
-        2: "Mostly square to target; good upward extension but minor sequencing errors.",
-        3: "Fully square to target; smooth knees→hips→arms extension in correct order."
-      }
-    },
-    followThroughControl: {
-      name: "Follow-Through & Ball Control",
-      descriptions: {
-        0: "Arms/wrists drop immediately; ball control inconsistent.",
-        1: "Short or abrupt follow-through; ball occasionally off target.",
-        2: "Controlled follow-through to target; ball mostly accurate.",
-        3: "Smooth follow-through to target; consistent arc, height, and accuracy."
-      }
-    }
-  },
   Digging: {
     readyPlatform: {
       name: "Ready Position & Platform",
@@ -69,15 +31,6 @@ const SKILL_CRITERIA = {
         1: "Contact on lower forearms but angle inconsistent.",
         2: "Contact on mid-forearms; platform angle mostly directs ball upward/forward.",
         3: "Contact on mid-forearms below waist; precise platform angle to target."
-      }
-    },
-    legDriveShoulder: {
-      name: "Leg Drive & Shoulder Lift",
-      descriptions: {
-        0: "No upward drive; swing arms instead of using legs.",
-        1: "Minimal leg extension; uneven shoulder motion.",
-        2: "Legs provide most power; subtle shoulder lift assists control.",
-        3: "Smooth, powerful leg drive with coordinated shoulder lift for perfect control."
       }
     },
     followThroughControl: {
