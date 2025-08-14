@@ -7,7 +7,7 @@ interface ScoreAdjustmentProps {
   skill: "Setting" | "Digging";
   autoScores: Record<string, number>;
   onScoreChange: (scores: Record<string, number>) => void;
-  capturedFrame?: string;
+  rubricFrames?: Record<string, string>;
 }
 
 const SKILL_CRITERIA = {
@@ -89,7 +89,7 @@ const SKILL_CRITERIA = {
   }
 };
 
-const ScoreAdjustment = ({ skill, autoScores, onScoreChange, capturedFrame }: ScoreAdjustmentProps) => {
+const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {} }: ScoreAdjustmentProps) => {
   const [scores, setScores] = useState(autoScores);
   const criteria = SKILL_CRITERIA[skill];
 
@@ -108,21 +108,28 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, capturedFrame }: Sc
 
   return (
     <div className="space-y-6">
-      {capturedFrame && (
+      {Object.keys(rubricFrames).length > 0 && (
         <Card className="p-4">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Analyzed Pose Reference</CardTitle>
+            <CardTitle className="text-base">AI Captured Reference Frames</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="relative">
-              <img 
-                src={capturedFrame} 
-                alt="Captured pose for analysis" 
-                className="w-full h-48 object-cover rounded-lg border border-border"
-              />
-              <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs">
-                AI analyzed this pose moment
-              </div>
+            <div className="grid grid-cols-2 gap-4">
+              {Object.entries(rubricFrames).map(([componentKey, frameData]) => {
+                const componentName = criteria[componentKey as keyof typeof criteria]?.name || componentKey;
+                return (
+                  <div key={componentKey} className="relative">
+                    <img 
+                      src={frameData} 
+                      alt={`${componentName} reference frame`} 
+                      className="w-full h-32 object-cover rounded-lg border border-border"
+                    />
+                    <div className="absolute bottom-1 left-1 bg-black/70 text-white px-2 py-1 rounded text-xs">
+                      {componentName}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -157,6 +164,23 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, capturedFrame }: Sc
                 <span>3</span>
               </div>
             </div>
+            
+            {/* Show specific reference frame for this component if available */}
+            {rubricFrames[key] && (
+              <div className="mb-4">
+                <div className="text-xs font-medium text-muted-foreground mb-2">Reference Frame:</div>
+                <div className="relative">
+                  <img 
+                    src={rubricFrames[key]} 
+                    alt={`${criterion.name} reference`} 
+                    className="w-full h-24 object-cover rounded border border-border"
+                  />
+                  <div className="absolute bottom-1 left-1 bg-black/70 text-white px-1 py-0.5 rounded text-xs">
+                    AI captured
+                  </div>
+                </div>
+              </div>
+            )}
             
             <div className="space-y-2">
               <div className="text-xs font-medium text-muted-foreground">Score Descriptions:</div>

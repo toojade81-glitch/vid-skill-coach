@@ -23,6 +23,7 @@ const NewAttempt = () => {
   const [finalScores, setFinalScores] = useState<Record<string, number>>({});
   const [metrics, setMetrics] = useState<any>(null);
   const [confidence, setConfidence] = useState(0);
+  const [rubricFrames, setRubricFrames] = useState<Record<string, string>>({});
   const [capturedFrame, setCapturedFrame] = useState<string>("");
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -42,12 +43,26 @@ const NewAttempt = () => {
     }
   };
 
-  const handleAnalysisComplete = (analysisMetrics: any, scores: Record<string, number>, conf: number, frame?: string) => {
+  const handleAnalysisComplete = (
+    analysisMetrics: any,
+    scores: Record<string, number>,
+    conf: number,
+    frames: Record<string, string>
+  ) => {
+    console.log("📊 Analysis complete with results:", { scores, analysisMetrics, conf, frames });
+    
     setMetrics(analysisMetrics);
     setAutoScores(scores);
     setFinalScores(scores);
     setConfidence(conf);
-    setCapturedFrame(frame || "");
+    setRubricFrames(frames);
+    
+    // Set the first available frame as the main captured frame for backward compatibility
+    const firstFrame = Object.values(frames)[0];
+    if (firstFrame) {
+      setCapturedFrame(firstFrame);
+    }
+    
     setStep("review");
   };
 
@@ -67,7 +82,8 @@ const NewAttempt = () => {
         autoScores,
         finalScores,
         metrics,
-        confidence
+        confidence,
+        rubricFrames
       };
 
       // Get existing attempts from localStorage
@@ -236,7 +252,7 @@ const NewAttempt = () => {
                   skill={formData.skill}
                   autoScores={autoScores}
                   onScoreChange={handleScoreAdjustment}
-                  capturedFrame={capturedFrame}
+                  rubricFrames={rubricFrames}
                 />
               </CardContent>
             </Card>

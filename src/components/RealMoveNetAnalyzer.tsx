@@ -17,11 +17,21 @@ interface PoseMetrics {
   contactFrame: number;
 }
 
+interface RubricFrames {
+  readyFootwork?: string;
+  handShapeContact?: string;
+  alignmentExtension?: string;
+  followThroughControl?: string;
+  readyPlatform?: string;
+  contactAngle?: string;
+  legDriveShoulder?: string;
+}
+
 interface RealMoveNetAnalyzerProps {
   videoFile: File | null;
   skill: "Setting" | "Digging";
   target: "Left" | "Center" | "Right";
-  onAnalysisComplete: (metrics: PoseMetrics, scores: Record<string, number>, confidence: number, capturedFrame?: string) => void;
+  onAnalysisComplete: (metrics: PoseMetrics, scores: Record<string, number>, confidence: number, rubricFrames: RubricFrames) => void;
 }
 
 // Global types for TensorFlow.js
@@ -83,6 +93,87 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: R
     }
   };
 
+  const analyzeVolleyballPose = (keypoints: any[], skill: string, timePercent: number) => {
+    if (!keypoints || keypoints.length === 0) return null;
+    
+    // Get key body points with confidence threshold
+    const getPoint = (name: string) => {
+      const point = keypoints.find(kp => kp.name === name);
+      return point && point.score > 0.3 ? point : null;
+    };
+    
+    const leftShoulder = getPoint('left_shoulder');
+    const rightShoulder = getPoint('right_shoulder');
+    const leftElbow = getPoint('left_elbow');
+    const rightElbow = getPoint('right_elbow');
+    const leftWrist = getPoint('left_wrist');
+    const rightWrist = getPoint('right_wrist');
+    const leftHip = getPoint('left_hip');
+    const rightHip = getPoint('right_hip');
+    const leftKnee = getPoint('left_knee');
+    const rightKnee = getPoint('right_knee');
+    
+    if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) return null;
+    
+    // Calculate pose characteristics
+    const shoulderCenter = {
+      x: (leftShoulder.x + rightShoulder.x) / 2,
+      y: (leftShoulder.y + rightShoulder.y) / 2
+    };
+    
+    const hipCenter = {
+      x: (leftHip.x + rightHip.x) / 2,
+      y: (leftHip.y + rightHip.y) / 2
+    };
+    
+    // Detect volleyball-specific poses
+    if (skill === 'Setting') {
+      // Ready position: early in video, stable stance
+      if (timePercent < 0.3) {
+        return 'readyFootwork';
+      }
+      
+      // Hand shape/contact: hands above shoulders
+      if (leftWrist && rightWrist && leftWrist.y < shoulderCenter.y && rightWrist.y < shoulderCenter.y) {
+        return 'handShapeContact';
+      }
+      
+      // Extension: peak arm extension moment
+      if (leftElbow && rightElbow && leftWrist && rightWrist) {
+        const armExtension = Math.abs(leftWrist.y - leftElbow.y) + Math.abs(rightWrist.y - rightElbow.y);
+        if (armExtension > 100 && timePercent > 0.3 && timePercent < 0.7) {
+          return 'alignmentExtension';
+        }
+      }
+      
+      // Follow-through: later in video
+      if (timePercent > 0.6) {
+        return 'followThroughControl';
+      }
+      
+    } else if (skill === 'Digging') {
+      // Ready platform: early position, arms down
+      if (timePercent < 0.3 && leftWrist && rightWrist && leftWrist.y > shoulderCenter.y) {
+        return 'readyPlatform';
+      }
+      
+      // Contact angle: arms in platform position
+      if (leftWrist && rightWrist && leftElbow && rightElbow) {
+        const armAngle = Math.abs(leftWrist.y - rightWrist.y);
+        if (armAngle < 50 && leftWrist.y > shoulderCenter.y) {
+          return 'contactAngle';
+        }
+      }
+      
+      // Leg drive/shoulder: knees bent, active stance
+      if (leftKnee && rightKnee && leftKnee.y < hipCenter.y - 20) {
+        return 'legDriveShoulder';
+      }
+    }
+    
+    return null;
+  };
+
   const captureVideoFrame = (video: HTMLVideoElement): string => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -124,7 +215,12 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: R
       const frameStep = duration / 48; // Sample ~48 frames
       let totalFrames = 0;
       let detectedFrames = 0;
-      let capturedFrame = '';
+      const rubricFrames: RubricFrames = {};
+      
+      // Track which rubric components we've captured
+      const neededComponents = skill === 'Setting' 
+        ? ['readyFootwork', 'handShapeContact', 'alignmentExtension', 'followThroughControl']
+        : ['readyPlatform', 'contactAngle', 'legDriveShoulder'];
 
       // Progress tracking
       const progressInterval = setInterval(() => {
@@ -145,13 +241,18 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: R
           });
 
           totalFrames++;
+          const timePercent = time / duration;
           
           if (poses[0]?.keypoints?.length > 0) {
             detectedFrames++;
             
-            // Capture middle frame for reference
-            if (time >= duration * 0.4 && time <= duration * 0.6 && !capturedFrame) {
-              capturedFrame = captureVideoFrame(video);
+            // Analyze volleyball-specific pose
+            const poseType = analyzeVolleyballPose(poses[0].keypoints, skill, timePercent);
+            
+            // Capture frame for this rubric component if we haven't already
+            if (poseType && !rubricFrames[poseType as keyof RubricFrames]) {
+              rubricFrames[poseType as keyof RubricFrames] = captureVideoFrame(video);
+              console.log(`📸 Captured ${poseType} frame at ${time.toFixed(1)}s`);
             }
           }
 
@@ -171,11 +272,27 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: R
       // Clean up
       URL.revokeObjectURL(video.src);
 
+      // Ensure we have at least one frame for each needed component
+      const missingComponents = neededComponents.filter(comp => !rubricFrames[comp as keyof RubricFrames]);
+      if (missingComponents.length > 0) {
+        console.log(`⚠️ Missing frames for: ${missingComponents.join(', ')}`);
+        
+        // Capture a fallback frame for missing components
+        video.currentTime = duration * 0.5;
+        await new Promise((resolve) => { video.onseeked = resolve; });
+        const fallbackFrame = captureVideoFrame(video);
+        
+        missingComponents.forEach(comp => {
+          rubricFrames[comp as keyof RubricFrames] = fallbackFrame;
+        });
+      }
+
       // Calculate results
       const detectionRate = detectedFrames / Math.max(1, totalFrames);
       const confidence = Math.min(1, detectionRate);
       
       console.log(`📊 Analysis complete: ${detectedFrames}/${totalFrames} frames detected (${(confidence * 100).toFixed(1)}%)`);
+      console.log(`📸 Captured frames for: ${Object.keys(rubricFrames).join(', ')}`);
 
       // Generate volleyball-specific scores based on detection quality
       const baseScore = Math.floor(confidence * 3); // 0-3 scale
@@ -204,8 +321,8 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: R
         contactFrame: Math.floor(detectedFrames / 2)
       };
 
-      onAnalysisComplete(metrics, scores, confidence, capturedFrame);
-      toast.success(`Analysis complete! Detected poses in ${detectedFrames}/${totalFrames} frames`);
+      onAnalysisComplete(metrics, scores, confidence, rubricFrames);
+      toast.success(`Analysis complete! Captured ${Object.keys(rubricFrames).length} reference frames`);
 
     } catch (error) {
       console.error("❌ Analysis failed:", error);
