@@ -59,147 +59,110 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
   }, [initialTime]);
 
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-    let cleanupUrl: string | null = null;
-    
-    if (videoFile) {
-      console.log("🎬 Processing new video file:", {
-        name: videoFile.name,
-        type: videoFile.type,
-        size: videoFile.size,
-        lastModified: videoFile.lastModified
-      });
+    console.log("🔄 VideoSlider useEffect triggered", { 
+      hasVideoFile: !!videoFile,
+      videoFileName: videoFile?.name,
+      currentVideoUrl: videoUrl
+    });
 
-      resetVideoState();
-      setLoadingProgress("Creating video URL...");
-      
-      try {
-        // Create blob URL - keep it simple
-        const url = URL.createObjectURL(videoFile);
-        cleanupUrl = url;
-        
-        // Generate unique key to force video element refresh
-        const key = `${videoFile.name}-${videoFile.size}-${videoFile.lastModified}`;
-        setVideoKey(key);
-        
-        console.log("🔗 Created blob URL:", url);
-        console.log("📁 File:", videoFile.name, `${(videoFile.size / 1024 / 1024).toFixed(2)}MB`);
-        
-        // Set URL immediately 
-        setVideoUrl(url);
-        setLoadingProgress("Loading video...");
-
-        // Timeout for stuck loading 
-        timeoutId = setTimeout(() => {
-          console.warn("⏰ Video loading timeout");
-          const video = videoRef.current;
-          if (video && isLoading) {
-            console.log("Video state:", {
-              readyState: video.readyState,
-              duration: video.duration,
-              error: video.error
-            });
-            
-            if (video.error) {
-              setError(`Video error: ${video.error.message}`);
-            } else if (video.duration && video.duration > 0) {
-              // Video is ready, just force it
-              console.log("Force ready");
-              handleVideoReady();
-            } else {
-              setError("Video format may not be supported");
-            }
-            setIsLoading(false);
-          }
-        }, 5000);
-
-        return () => {
-          if (timeoutId) clearTimeout(timeoutId);
-          if (cleanupUrl) {
-            console.log("🧹 Cleaning up blob URL:", cleanupUrl);
-            URL.revokeObjectURL(cleanupUrl);
-          }
-        };
-      } catch (error) {
-        console.error("❌ Failed to create video URL:", error);
-        setError("Failed to process video file");
-        setIsLoading(false);
-      }
-    } else {
+    if (!videoFile) {
       console.log("❌ No video file provided");
-      setError("No video source");
+      setError("No video file provided");
+      setIsLoading(false);
+      return;
+    }
+
+    // Reset state
+    setError("");
+    setIsLoading(true);
+    setDuration(0);
+    setCurrentTime(initialTime);
+    setIsPlaying(false);
+    setLoadingProgress("Creating video URL...");
+
+    try {
+      // Create blob URL
+      const url = URL.createObjectURL(videoFile);
+      console.log("✅ Blob URL created:", url);
+      
+      setVideoUrl(url);
+      setLoadingProgress("Video URL set, waiting for load...");
+
+      // Cleanup function
+      return () => {
+        console.log("🧹 Cleaning up blob URL:", url);
+        URL.revokeObjectURL(url);
+      };
+    } catch (error) {
+      console.error("❌ Failed to create blob URL:", error);
+      setError("Failed to create video URL");
       setIsLoading(false);
     }
+  }, [videoFile?.name, videoFile?.size, videoFile?.lastModified, initialTime]);
 
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (cleanupUrl) URL.revokeObjectURL(cleanupUrl);
-    };
-  }, [videoFile, handleVideoReady, resetVideoState]);
+  // Separate effect for video element events
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !videoUrl) return;
 
-  const handleLoadStart = () => {
-    console.log("loadstart event fired");
-    setLoadingProgress("Loading started...");
-  };
+    console.log("🎬 Setting up video element with URL:", videoUrl);
 
-  const handleLoadedMetadata = () => {
-    console.log("loadedmetadata event fired");
-    setLoadingProgress("Metadata loaded...");
-    handleVideoReady();
-  };
-
-  const handleLoadedData = () => {
-    console.log("loadeddata event fired");
-    setLoadingProgress("Data loaded...");
-    handleVideoReady();
-  };
-
-  const handleCanPlay = () => {
-    console.log("canplay event fired");
-    setLoadingProgress("Can play...");
-    handleVideoReady();
-  };
-
-  const handleCanPlayThrough = () => {
-    console.log("canplaythrough event fired");
-    setLoadingProgress("Ready to play...");
-    handleVideoReady();
-  };
-
-  const handleError = (e: any) => {
-    console.error("Video error:", e);
-    const video = e.target;
-    let errorMessage = "Unknown error";
-    
-    if (video?.error) {
-      switch (video.error.code) {
-        case 1:
-          errorMessage = "Video loading aborted";
-          break;
-        case 2:
-          errorMessage = "Network error";
-          break;
-        case 3:
-          errorMessage = "Video format not supported";
-          break;
-        case 4:
-          errorMessage = "Video not found";
-          break;
-        default:
-          errorMessage = video.error.message || "Unknown video error";
+    const handleLoadedMetadata = () => {
+      console.log("📊 Video metadata loaded:", {
+        duration: video.duration,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight
+      });
+      
+      if (video.duration > 0) {
+        setDuration(video.duration);
+        setIsLoading(false);
+        setLoadingProgress("Complete");
+        
+        // Set initial time if provided
+        if (initialTime > 0 && initialTime < video.duration) {
+          video.currentTime = initialTime;
+          setCurrentTime(initialTime);
+        }
       }
-    }
-    
-    setIsLoading(false);
-    setError(`Failed to load video: ${errorMessage}`);
-  };
+    };
 
-  const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
+    const handleError = (e: any) => {
+      console.error("❌ Video error:", e);
+      const errorCode = video.error?.code;
+      const errorMessage = video.error?.message || "Unknown error";
+      console.error("Video error details:", { code: errorCode, message: errorMessage });
+      
+      setError(`Video failed to load: ${errorMessage}`);
+      setIsLoading(false);
+    };
+
+    const handleTimeUpdate = () => {
+      setCurrentTime(video.currentTime);
       captureCurrentFrame();
-    }
-  };
+    };
+
+    // Add event listeners
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    video.addEventListener('error', handleError);
+    video.addEventListener('timeupdate', handleTimeUpdate);
+
+    // Set the source
+    video.src = videoUrl;
+    console.log("🎯 Video src set to:", video.src);
+
+    // Cleanup
+    return () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      video.removeEventListener('error', handleError);
+      video.removeEventListener('timeupdate', handleTimeUpdate);
+    };
+  }, [videoUrl, initialTime]);
+
+  // Remove these individual handlers since we're handling events in useEffect
+  const handleLoadStart = () => console.log("🟡 loadstart event");
+  const handleCanPlay = () => console.log("🟢 canplay event");
+  const handleCanPlayThrough = () => console.log("🟢 canplaythrough event");
 
   const handleSliderChange = (value: number[]) => {
     const newTime = value[0];
@@ -281,16 +244,11 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
       <div className="relative">
         <video
           ref={videoRef}
-          src={videoUrl}
-          key={videoKey}
+          key={`video-${videoFile?.name}-${videoFile?.size}`}
           className="w-full h-32 object-cover rounded-lg border border-border"
           onLoadStart={handleLoadStart}
-          onLoadedMetadata={handleLoadedMetadata}
-          onLoadedData={handleLoadedData}
           onCanPlay={handleCanPlay}
           onCanPlayThrough={handleCanPlayThrough}
-          onError={handleError}
-          onTimeUpdate={handleTimeUpdate}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
           preload="auto"
