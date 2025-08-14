@@ -76,32 +76,30 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
         setVideoUrl(url);
         setLoadingProgress("Loading video...");
 
-        // Fallback timeout for stuck loading
+        // Fallback timeout for stuck loading - capture loading state at effect creation
         timeoutId = setTimeout(() => {
-          if (isLoading) {
-            console.warn("Video loading timeout reached");
-            const video = videoRef.current;
-            if (video) {
-              console.log("Timeout state check:", {
-                readyState: video.readyState,
-                networkState: video.networkState,
-                error: video.error
-              });
-              
-              if (video.error) {
-                setError(`Video error: ${video.error.message}`);
-              } else if (video.networkState === 3) {
-                setError("Network error: Unable to load video");
-              } else if (video.readyState === 0) {
-                setError("Video format may not be supported");
-              } else {
-                // Force check if video is actually ready
-                handleVideoReady();
-              }
-              setIsLoading(false);
+          console.warn("Video loading timeout reached");
+          const video = videoRef.current;
+          if (video) {
+            console.log("Timeout state check:", {
+              readyState: video.readyState,
+              networkState: video.networkState,
+              error: video.error
+            });
+            
+            if (video.error) {
+              setError(`Video error: ${video.error.message}`);
+            } else if (video.networkState === 3) {
+              setError("Network error: Unable to load video");
+            } else if (video.readyState === 0) {
+              setError("Video format may not be supported");
+            } else {
+              // Force check if video is actually ready
+              handleVideoReady();
             }
+            setIsLoading(false);
           }
-        }, 5000);
+        }, 3000);
 
         return () => {
           clearTimeout(timeoutId);
@@ -117,7 +115,7 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [videoFile, isLoading, handleVideoReady, resetVideoState]);
+  }, [videoFile, handleVideoReady, resetVideoState]);
 
   const handleLoadStart = () => {
     console.log("loadstart event fired");
