@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Upload } from "lucide-react";
 import { toast } from "sonner";
-import PoseAnalyzer from "@/components/PoseAnalyzer";
+import RealMoveNetAnalyzer from "@/components/RealMoveNetAnalyzer";
 import ScoreAdjustment from "@/components/ScoreAdjustment";
 
 const NewAttempt = () => {
@@ -211,7 +211,7 @@ const NewAttempt = () => {
               </div>
 
               {videoFile && (
-                <PoseAnalyzer
+                <RealMoveNetAnalyzer
                   videoFile={videoFile}
                   skill={formData.skill}
                   target={formData.target}
