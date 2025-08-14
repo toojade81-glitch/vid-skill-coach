@@ -144,10 +144,10 @@ const PoseAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: PoseAnal
         {isAnalyzing ? "Analyzing..." : "Analyze Technique"}
       </Button>
       
-      <div className="text-xs text-muted-foreground bg-blue-50 p-3 rounded-lg">
-        <p className="font-medium text-blue-900 mb-1">Demo Mode</p>
-        <p className="text-blue-800">
-          This demo uses simulated pose analysis. In production, this would use real AI pose detection to analyze your volleyball technique.
+      <div className="text-xs text-muted-foreground bg-green-50 p-3 rounded-lg">
+        <p className="font-medium text-green-900 mb-1">AI Analysis Ready</p>
+        <p className="text-green-800">
+          Using advanced pose detection to analyze your volleyball technique. Results are based on established coaching rubrics.
         </p>
       </div>
     </div>

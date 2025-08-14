@@ -132,7 +132,7 @@ const NewAttempt = () => {
       const file = new File([blob], 'recording.webm', { type: 'video/webm' });
       setVideoFile(file);
       setIsRecording(false);
-      stopCamera();
+      // Don't stop camera - keep viewfinder active
       setStep("analyze");
     };
     
@@ -427,21 +427,30 @@ const NewAttempt = () => {
 
               {isRecording && (
                 <div className="space-y-4">
-                  <div className="relative bg-black rounded-lg overflow-hidden">
+                  <div className="relative bg-black rounded-lg overflow-hidden border-2 border-dashed border-white/30">
+                    {/* Recording indicator */}
+                    <div className="absolute top-2 left-2 z-10">
+                      <div className="flex items-center gap-2 bg-red-600/90 px-2 py-1 rounded text-white text-xs animate-pulse">
+                        <div className="w-2 h-2 bg-red-200 rounded-full animate-pulse" />
+                        RECORDING
+                      </div>
+                    </div>
+                    
                     <video
                       ref={videoRef}
                       autoPlay
                       muted
                       playsInline
                       className="w-full h-64 object-cover"
-                      style={{ transform: 'scaleX(-1)' }} // Mirror the video for better UX
+                      style={{ 
+                        transform: cameraFacing === "user" ? 'scaleX(-1)' : 'none' 
+                      }}
                     />
-                    <div className="absolute top-4 left-4 right-4 flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-                        <span className="text-white text-sm font-medium bg-black/50 px-2 py-1 rounded">
-                          RECORDING
-                        </span>
+                    
+                    {/* Recording timer and camera info */}
+                    <div className="absolute bottom-2 left-2 right-2 z-10 flex justify-between items-center">
+                      <div className="bg-black/70 px-2 py-1 rounded text-white text-xs">
+                        {cameraFacing === "user" ? "📱 Front Camera" : "📹 Rear Camera"}
                       </div>
                     </div>
                   </div>
