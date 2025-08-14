@@ -30,39 +30,75 @@ const NewAttempt = () => {
 
   const startCamera = async () => {
     try {
-      console.log("Starting camera...");
+      console.log("🎥 Starting camera access...");
       
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: "environment", // Use back camera for better framing
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: false 
-      });
-      
-      console.log("Camera stream obtained:", mediaStream);
-      console.log("Video tracks:", mediaStream.getVideoTracks());
-      
+      // Check if getUserMedia is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Camera API not supported in this browser");
+      }
+
+      // Try different camera configurations for better compatibility
+      const constraints = [
+        // Try front camera first (more likely to work)
+        { video: { facingMode: "user" }, audio: false },
+        // Fallback to any available camera
+        { video: true, audio: false },
+        // Try back camera as last resort
+        { video: { facingMode: "environment" }, audio: false }
+      ];
+
+      let mediaStream = null;
+      let lastError = null;
+
+      for (const constraint of constraints) {
+        try {
+          console.log("🔄 Trying camera constraint:", constraint);
+          mediaStream = await navigator.mediaDevices.getUserMedia(constraint);
+          console.log("✅ Camera stream obtained successfully!");
+          break;
+        } catch (err) {
+          console.log("❌ Failed with constraint:", constraint, err);
+          lastError = err;
+        }
+      }
+
+      if (!mediaStream) {
+        throw lastError || new Error("No camera access available");
+      }
+
+      console.log("📹 Video tracks:", mediaStream.getVideoTracks());
       setStream(mediaStream);
       
-      if (videoRef.current) {
-        console.log("Setting video source...");
-        videoRef.current.srcObject = mediaStream;
-        
-        // Ensure video plays
-        videoRef.current.onloadedmetadata = () => {
-          console.log("Video metadata loaded");
-          videoRef.current?.play().catch(err => {
-            console.error("Error playing video:", err);
-          });
-        };
-      } else {
-        console.error("Video ref not found");
-      }
+      // Wait a moment for state to update
+      setTimeout(() => {
+        if (videoRef.current && mediaStream) {
+          console.log("🔗 Connecting stream to video element...");
+          videoRef.current.srcObject = mediaStream;
+          
+          videoRef.current.onloadedmetadata = () => {
+            console.log("📊 Video metadata loaded, attempting to play...");
+            if (videoRef.current) {
+              videoRef.current.play()
+                .then(() => console.log("▶️ Video playing successfully!"))
+                .catch(err => {
+                  console.error("❌ Video play failed:", err);
+                  toast.error("Failed to start video playback");
+                });
+            }
+          };
+
+          videoRef.current.onerror = (e) => {
+            console.error("❌ Video element error:", e);
+            toast.error("Video display error");
+          };
+        } else {
+          console.error("❌ Video ref or stream not available");
+        }
+      }, 100);
+
     } catch (error) {
-      console.error("Camera error:", error);
-      toast.error(`Failed to access camera: ${error.message}`);
+      console.error("❌ Camera error:", error);
+      toast.error(`Camera failed: ${error.message}`);
     }
   };
 
@@ -275,34 +311,58 @@ const NewAttempt = () => {
               </div>
 
               {!stream && !isRecording && (
-                <Button
-                  onClick={startCamera}
-                  className="w-full"
-                  size="lg"
-                >
-                  <Camera className="h-4 w-4 mr-2" />
-                  Start Camera
-                </Button>
+                <div className="space-y-4">
+                  <Button
+                    onClick={startCamera}
+                    className="w-full"
+                    size="lg"
+                  >
+                    <Camera className="h-4 w-4 mr-2" />
+                    Start Camera Viewfinder
+                  </Button>
+                  
+                  <div className="text-center text-sm text-muted-foreground">
+                    <p>Click above to start the camera and see the viewfinder</p>
+                  </div>
+                </div>
               )}
 
               {stream && !isRecording && (
                 <div className="space-y-4">
-                  <div className="relative bg-black rounded-lg overflow-hidden">
+                  <div className="relative bg-black rounded-lg overflow-hidden border-2 border-dashed border-white/30">
+                    {/* Camera Status Indicator */}
+                    <div className="absolute top-2 left-2 z-10">
+                      <div className="flex items-center gap-2 bg-black/70 px-2 py-1 rounded text-white text-xs">
+                        <div className={`w-2 h-2 rounded-full ${stream ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
+                        {stream ? 'Camera Active' : 'Camera Inactive'}
+                      </div>
+                    </div>
+                    
                     <video
                       ref={videoRef}
                       autoPlay
                       muted
                       playsInline
-                      className="w-full h-64 object-cover"
-                      style={{ transform: 'scaleX(-1)' }} // Mirror the video for better UX
+                      className="w-full h-64 object-cover bg-gray-900"
+                      style={{ transform: 'scaleX(-1)' }}
+                      onLoadStart={() => console.log("📱 Video load started")}
+                      onCanPlay={() => console.log("🎬 Video can play")}
+                      onPlaying={() => console.log("▶️ Video is playing")}
                       onError={(e) => {
-                        console.error("Video element error:", e);
+                        console.error("❌ Video element error:", e);
                         toast.error("Video display error");
                       }}
-                      onCanPlay={() => {
-                        console.log("Video can play");
-                      }}
                     />
+                    
+                    {/* Overlay when no stream */}
+                    {!stream && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
+                        <div className="text-center text-white">
+                          <div className="text-4xl mb-2">📹</div>
+                          <p className="text-sm">Camera not started</p>
+                        </div>
+                      </div>
+                    )}
                     <div className="absolute inset-0 border-2 border-dashed border-white/50 m-4 rounded-lg pointer-events-none" />
                     <div className="absolute bottom-4 left-4 right-4 text-center">
                       <p className="text-white text-sm bg-black/50 px-2 py-1 rounded">
