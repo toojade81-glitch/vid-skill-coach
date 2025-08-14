@@ -22,19 +22,40 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
 
   useEffect(() => {
     if (videoFile) {
+      console.log("Creating video URL for file:", videoFile.name, videoFile.type, videoFile.size);
       setIsLoading(true);
       setError("");
+      
       const url = URL.createObjectURL(videoFile);
       setVideoUrl(url);
       
+      // Force loading after URL is set
+      const timer = setTimeout(() => {
+        if (videoRef.current && isLoading) {
+          console.log("Force checking video state");
+          const video = videoRef.current;
+          console.log("Video readyState:", video.readyState);
+          console.log("Video networkState:", video.networkState);
+          
+          if (video.readyState >= 1) { // HAVE_METADATA
+            handleVideoReady();
+          } else if (video.networkState === 3) { // NETWORK_NO_SOURCE
+            setError("Video format not supported");
+            setIsLoading(false);
+          }
+        }
+      }, 2000);
+      
       return () => {
+        clearTimeout(timer);
         URL.revokeObjectURL(url);
       };
     }
   }, [videoFile]);
 
-  const handleLoadedMetadata = () => {
-    if (videoRef.current) {
+  const handleVideoReady = () => {
+    if (videoRef.current && videoRef.current.duration) {
+      console.log("Video ready, duration:", videoRef.current.duration);
       setDuration(videoRef.current.duration);
       setIsLoading(false);
       
@@ -43,19 +64,28 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
         videoRef.current.currentTime = initialTime;
         setCurrentTime(initialTime);
       }
-      
-      console.log("Video loaded, duration:", videoRef.current.duration);
     }
   };
 
-  const handleLoadedData = () => {
-    setIsLoading(false);
+  const handleLoadedMetadata = () => {
+    console.log("loadedmetadata event fired");
+    handleVideoReady();
   };
 
-  const handleError = () => {
+  const handleLoadedData = () => {
+    console.log("loadeddata event fired");
+    handleVideoReady();
+  };
+
+  const handleCanPlay = () => {
+    console.log("canplay event fired");
+    handleVideoReady();
+  };
+
+  const handleError = (e: any) => {
+    console.error("Video error:", e);
     setIsLoading(false);
-    setError("Failed to load video");
-    console.error("Video loading error");
+    setError(`Failed to load video: ${e.target?.error?.message || 'Unknown error'}`);
   };
 
   const handleTimeUpdate = () => {
@@ -135,13 +165,16 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
           className="w-full h-32 object-cover rounded-lg border border-border"
           onLoadedMetadata={handleLoadedMetadata}
           onLoadedData={handleLoadedData}
+          onCanPlay={handleCanPlay}
           onError={handleError}
           onTimeUpdate={handleTimeUpdate}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
-          preload="metadata"
+          preload="auto"
+          controls={false}
           muted
           playsInline
+          crossOrigin="anonymous"
         />
         <canvas
           ref={canvasRef}
