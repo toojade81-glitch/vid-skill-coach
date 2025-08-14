@@ -5,7 +5,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
-    <!-- TensorFlow.js and Pose Detection Libraries with debugging -->
+    <!-- TensorFlow.js and Pose Detection Libraries with proper debugging -->
     <script>
       console.log('[MoveNet Debug] Starting library loading...');
       
@@ -17,37 +17,53 @@
       };
       
       // Function to update status with detailed info
-      function updateStatus() {
-        const statusEl = document.getElementById('movenetStatus');
-        const debug = window.moveNetDebug;
-        
-        if (debug.tf && debug.poseDetection) {
-          if (statusEl) statusEl.textContent = 'MoveNet libraries ready.';
-          console.log('[MoveNet Debug] All libraries loaded successfully');
-        } else {
-          const missing = [];
-          if (!debug.tf) missing.push('TensorFlow.js');
-          if (!debug.poseDetection) missing.push('Pose Detection');
-          if (!debug.mediapipe) missing.push('MediaPipe');
+      window.updateMoveNetStatus = function() {
+        setTimeout(() => {
+          const statusEl = document.getElementById('movenetStatus');
+          const debug = window.moveNetDebug;
           
-          const msg = `Missing: ${missing.join(', ')}`;
-          if (statusEl) statusEl.textContent = msg;
-          console.log('[MoveNet Debug]', msg);
-        }
-      }
+          console.log('[MoveNet Debug] Current status:', debug);
+          console.log('[MoveNet Debug] window.tf exists:', !!window.tf);
+          console.log('[MoveNet Debug] window.poseDetection exists:', !!window.poseDetection);
+          
+          if (window.tf && window.poseDetection) {
+            if (statusEl) statusEl.textContent = 'MoveNet libraries ready.';
+            console.log('[MoveNet Debug] All libraries loaded successfully');
+          } else {
+            const missing = [];
+            if (!window.tf) missing.push('TensorFlow.js');
+            if (!window.poseDetection) missing.push('Pose Detection');
+            
+            const msg = `Missing: ${missing.join(', ')}`;
+            if (statusEl) statusEl.textContent = msg;
+            console.log('[MoveNet Debug]', msg);
+          }
+        }, 100);
+      };
     </script>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0/dist/tf.min.js" 
-            onload="console.log('[MoveNet Debug] TensorFlow.js loaded'); window.moveNetDebug.tf = true; updateStatus();" 
-            onerror="console.error('[MoveNet Debug] TensorFlow.js failed to load'); updateStatus();"></script>
+            onload="console.log('[MoveNet Debug] TensorFlow.js loaded'); window.moveNetDebug.tf = true; window.updateMoveNetStatus();" 
+            onerror="console.error('[MoveNet Debug] TensorFlow.js failed to load from jsdelivr'); window.updateMoveNetStatus();"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@3.5.0/dist/pose-detection.min.js" 
-            onload="console.log('[MoveNet Debug] Pose Detection loaded'); window.moveNetDebug.poseDetection = true; updateStatus();" 
-            onerror="console.error('[MoveNet Debug] Pose Detection failed to load'); updateStatus();"></script>
+            onload="console.log('[MoveNet Debug] Pose Detection loaded'); window.moveNetDebug.poseDetection = true; window.updateMoveNetStatus();" 
+            onerror="console.error('[MoveNet Debug] Pose Detection failed to load from jsdelivr'); window.updateMoveNetStatus();"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.js" 
-            onload="console.log('[MoveNet Debug] MediaPipe loaded'); window.moveNetDebug.mediapipe = true; updateStatus();" 
-            onerror="console.error('[MoveNet Debug] MediaPipe failed to load'); updateStatus();"></script>
+            onload="console.log('[MoveNet Debug] MediaPipe loaded'); window.moveNetDebug.mediapipe = true;" 
+            onerror="console.error('[MoveNet Debug] MediaPipe failed to load');"></script>
+            
+    <!-- Fallback status check -->
+    <script>
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          if (window.updateMoveNetStatus) {
+            window.updateMoveNetStatus();
+          }
+        }, 2000);
+      });
+    </script>
     
     <title>Volleyball Skill Assessor</title>
     <meta name="description" content="AI-powered volleyball skill assessment with on-device analysis" />
