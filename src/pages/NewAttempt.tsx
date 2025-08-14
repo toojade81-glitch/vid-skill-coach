@@ -120,22 +120,32 @@ const NewAttempt = () => {
 
   const saveAttempt = async () => {
     try {
-      // For demo purposes, using placeholder IDs - in real app these would be proper references
-      const { error } = await supabase
-        .from('attempts')
-        .insert({
-          student_id: crypto.randomUUID(), // Placeholder student reference
-          session_id: crypto.randomUUID(), // Placeholder session reference  
-          skill_id: crypto.randomUUID(), // Placeholder skill reference
-          notes: formData.notes,
-          auto_metrics: metrics,
-          ratings: finalScores,
-          overall_score: confidence
-        });
+      // Save to localStorage instead of database for privacy
+      const attemptData = {
+        id: crypto.randomUUID(),
+        date: new Date().toISOString(),
+        skill: formData.skill,
+        target: formData.target,
+        notes: formData.notes,
+        autoScores,
+        finalScores,
+        metrics,
+        confidence
+      };
 
-      if (error) throw error;
+      // Get existing attempts from localStorage
+      const existingAttempts = JSON.parse(localStorage.getItem('volleyball-attempts') || '[]');
+      
+      // Add new attempt
+      existingAttempts.unshift(attemptData);
+      
+      // Keep only last 50 attempts to prevent excessive storage
+      const trimmedAttempts = existingAttempts.slice(0, 50);
+      
+      // Save back to localStorage
+      localStorage.setItem('volleyball-attempts', JSON.stringify(trimmedAttempts));
 
-      toast.success("Attempt saved successfully!");
+      toast.success("Assessment saved locally on your device!");
       navigate("/history");
     } catch (error) {
       console.error("Error saving attempt:", error);

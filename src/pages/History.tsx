@@ -1,98 +1,92 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Download, Calendar, Target, Award } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { ArrowLeft, Calendar, Trophy, Target, FileText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-interface Attempt {
-  attempt_id: string;
-  timestamp: string;
-  student_id: string;
-  session_id: string;
-  skill_id: string;
-  ratings: any;
-  notes?: string | null;
-  auto_metrics?: any;
-  overall_score?: number | null;
+interface AttemptData {
+  id: string;
+  date: string;
+  skill: string;
+  target: string;
+  notes: string;
+  autoScores: Record<string, number>;
+  finalScores: Record<string, number>;
+  metrics: any;
+  confidence: number;
 }
 
 const History = () => {
-  const [attempts, setAttempts] = useState<Attempt[]>([]);
+  const [attempts, setAttempts] = useState<AttemptData[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchAttempts();
+    loadAttempts();
   }, []);
 
-  const fetchAttempts = async () => {
+  const loadAttempts = () => {
     try {
-      const { data, error } = await supabase
-        .from('attempts')
-        .select('*')
-        .order('timestamp', { ascending: false });
-
-      if (error) throw error;
-      setAttempts(data || []);
+      const storedAttempts = localStorage.getItem('volleyball-attempts');
+      if (storedAttempts) {
+        setAttempts(JSON.parse(storedAttempts));
+      }
     } catch (error) {
-      console.error("Error fetching attempts:", error);
+      console.error("Error loading attempts:", error);
       toast.error("Failed to load history");
     } finally {
       setLoading(false);
     }
   };
 
-  const exportToCSV = () => {
-    const headers = [
-      "Date",
-      "Student ID", 
-      "Session ID",
-      "Skill ID",
-      "Ratings",
-      "Confidence",
-      "Notes"
-    ];
-
-    const csvData = attempts.map(attempt => [
-      new Date(attempt.timestamp).toLocaleDateString(),
-      attempt.student_id,
-      attempt.session_id,
-      attempt.skill_id,
-      JSON.stringify(attempt.ratings || {}),
-      Math.round((attempt.overall_score || 0) * 100) + "%",
-      attempt.notes || ""
-    ]);
-
-    const csvContent = [headers, ...csvData]
-      .map(row => row.map(cell => `"${cell}"`).join(","))
-      .join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `volleyball-assessments-${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    toast.success("History exported to CSV");
+  const deleteAttempt = (attemptId: string) => {
+    try {
+      const updatedAttempts = attempts.filter(attempt => attempt.id !== attemptId);
+      setAttempts(updatedAttempts);
+      localStorage.setItem('volleyball-attempts', JSON.stringify(updatedAttempts));
+      toast.success("Assessment deleted");
+    } catch (error) {
+      console.error("Error deleting attempt:", error);
+      toast.error("Failed to delete assessment");
+    }
   };
 
-  const calculateAverage = (scores: Record<string, number> | null) => {
-    if (!scores) return 0;
+  const clearAllHistory = () => {
+    if (confirm("Are you sure you want to clear all assessment history? This cannot be undone.")) {
+      localStorage.removeItem('volleyball-attempts');
+      setAttempts([]);
+      toast.success("All history cleared");
+    }
+  };
+
+  const getScoreColor = (score: number) => {
+    if (score >= 2.5) return "bg-green-100 text-green-800";
+    if (score >= 1.5) return "bg-yellow-100 text-yellow-800";
+    return "bg-red-100 text-red-800";
+  };
+
+  const calculateAverageScore = (scores: Record<string, number>) => {
     const values = Object.values(scores);
-    if (values.length === 0) return 0;
-    return values.reduce((sum, score) => sum + score, 0) / values.length;
+    return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary/5 to-primary/10 p-4">
-        <div className="max-w-md mx-auto">
-          <div className="flex items-center gap-4 mb-6">
+      <div className="min-h-screen bg-gradient-to-br from-primary/5 to-primary/10 p-4 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-2 text-muted-foreground">Loading history...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 to-primary/10 p-4">
+      <div className="max-w-4xl mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
             <Button variant="outline" size="sm" asChild>
               <Link to="/">
                 <ArrowLeft className="h-4 w-4 mr-2" />
@@ -101,106 +95,114 @@ const History = () => {
             </Button>
             <h1 className="text-2xl font-bold text-primary">Assessment History</h1>
           </div>
-          <div className="text-center text-muted-foreground">Loading...</div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 to-primary/10 p-4">
-      <div className="max-w-md mx-auto">
-        <div className="flex items-center gap-4 mb-6">
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Link>
-          </Button>
-          <h1 className="text-2xl font-bold text-primary">Assessment History</h1>
-        </div>
-
-        {attempts.length > 0 && (
-          <div className="mb-4">
-            <Button 
-              onClick={exportToCSV}
-              variant="outline"
-              size="sm"
-              className="w-full"
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Export to CSV
+          
+          {attempts.length > 0 && (
+            <Button variant="outline" size="sm" onClick={clearAllHistory}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Clear All
             </Button>
-          </div>
-        )}
+          )}
+        </div>
 
-        <div className="space-y-4">
-          {attempts.length === 0 ? (
-            <Card className="shadow-lg">
-              <CardContent className="p-6 text-center">
-                <p className="text-muted-foreground mb-4">No assessments recorded yet</p>
-                <Button asChild>
-                  <Link to="/new-attempt">Create First Assessment</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            attempts.map((attempt) => (
-              <Card key={attempt.attempt_id} className="shadow-lg">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center justify-between">
-                    <span className="flex items-center gap-2">
-                      <Award className="h-4 w-4" />
-                      Assessment
-                    </span>
-                    <span className="text-sm font-normal text-muted-foreground">
-                      Avg: {calculateAverage(attempt.ratings).toFixed(1)}/3
-                    </span>
-                  </CardTitle>
+        {attempts.length === 0 ? (
+          <Card className="shadow-lg">
+            <CardContent className="text-center py-12">
+              <Trophy className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">No Assessments Yet</h3>
+              <p className="text-muted-foreground mb-6">
+                Start recording your volleyball technique to build your assessment history.
+              </p>
+              <Button asChild>
+                <Link to="/new-attempt">
+                  Record First Assessment
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <p className="text-sm text-blue-800">
+                <strong>Privacy Notice:</strong> All assessment data is stored locally on your device. 
+                No data is sent to external servers, ensuring complete privacy.
+              </p>
+            </div>
+            
+            {attempts.map((attempt) => (
+              <Card key={attempt.id} className="shadow-lg">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <Calendar className="h-5 w-5" />
+                      {new Date(attempt.date).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </CardTitle>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteAttempt(attempt.id)}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid grid-cols-1 gap-4 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground">
-                        {new Date(attempt.timestamp).toLocaleDateString()}
-                      </span>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Target className="h-4 w-4 text-primary" />
+                        <span className="font-medium">{attempt.skill}</span>
+                        <Badge variant="outline">{attempt.target} Target</Badge>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <Trophy className="h-4 w-4 text-primary" />
+                        <span className="text-sm">Average Score:</span>
+                        <Badge className={getScoreColor(calculateAverageScore(attempt.finalScores))}>
+                          {calculateAverageScore(attempt.finalScores).toFixed(1)}/3.0
+                        </Badge>
+                      </div>
+                      
+                      <div className="text-sm text-muted-foreground">
+                        Confidence: {Math.round(attempt.confidence * 100)}%
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <h4 className="font-medium text-sm">Final Scores:</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(attempt.finalScores).map(([criterion, score]) => (
+                          <div key={criterion} className="text-xs">
+                            <span className="text-muted-foreground">{criterion}:</span>
+                            <Badge variant="outline" className="ml-1">
+                              {score}/3
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                   
-                  <div className="text-sm">
-                    <div className="font-medium">Student: {attempt.student_id.substring(0, 8)}...</div>
-                    <div className="text-muted-foreground">Session: {attempt.session_id.substring(0, 8)}...</div>
-                  </div>
-
-                  <div className="bg-muted/50 p-3 rounded-lg">
-                    <div className="text-sm font-medium mb-2">Criterion Scores</div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      {attempt.ratings && Object.entries(attempt.ratings).map(([criterion, score]) => (
-                        <div key={criterion} className="flex justify-between">
-                          <span className="capitalize">
-                            {criterion.replace(/([A-Z])/g, ' $1').trim()}
-                          </span>
-                          <span className="font-medium">{String(score)}/3</span>
-                        </div>
-                      ))}
-                      {(!attempt.ratings || Object.keys(attempt.ratings).length === 0) && (
-                        <div className="text-muted-foreground col-span-2">No scores available</div>
-                      )}
+                  {attempt.notes && (
+                    <div className="mt-4 p-3 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">Notes:</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{attempt.notes}</p>
                     </div>
-                  </div>
-
-                  <div className="flex justify-between items-center text-xs text-muted-foreground">
-                    <span>Score: {Math.round((attempt.overall_score || 0) * 100)}%</span>
-                    {attempt.notes && (
-                      <span className="italic">"{attempt.notes.substring(0, 30)}..."</span>
-                    )}
-                  </div>
+                  )}
                 </CardContent>
               </Card>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
 
         <div className="mt-8 text-center">
           <Button asChild variant="link" className="text-primary">
