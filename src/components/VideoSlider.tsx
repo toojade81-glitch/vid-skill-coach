@@ -84,29 +84,20 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
         
         console.log("🔗 Created blob URL:", url);
         console.log("🔑 Video key:", key);
+        console.log("📁 File details:", {
+          type: videoFile.type,
+          size: `${(videoFile.size / 1024 / 1024).toFixed(2)}MB`
+        });
         
-        // Test blob URL validity
-        fetch(url, { method: 'HEAD' })
-          .then(response => {
-            console.log("🌐 Blob URL test - Status:", response.status, "Type:", response.headers.get('content-type'));
-            if (response.ok) {
-              setVideoUrl(url);
-              setLoadingProgress("Video URL ready, loading...");
-            } else {
-              throw new Error(`Blob URL test failed: ${response.status}`);
-            }
-          })
-          .catch(err => {
-            console.error("❌ Blob URL test failed:", err);
-            setError("Failed to validate video URL");
-            setIsLoading(false);
-          });
+        // Directly set the video URL - blob URLs don't need validation
+        setVideoUrl(url);
+        setLoadingProgress("Video URL ready, loading...");
 
-        // Fallback timeout for stuck loading
+        // Shorter timeout since we're not doing network validation
         timeoutId = setTimeout(() => {
-          console.warn("⏰ Video loading timeout reached after 8 seconds");
+          console.warn("⏰ Video loading timeout reached after 5 seconds");
           const video = videoRef.current;
-          if (video) {
+          if (video && isLoading) {
             console.log("🔍 Timeout state check:", {
               src: video.src,
               readyState: video.readyState,
@@ -114,28 +105,25 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
               error: video.error,
               duration: video.duration,
               videoWidth: video.videoWidth,
-              videoHeight: video.videoHeight
+              videoHeight: video.videoHeight,
+              currentTime: video.currentTime,
+              buffered: video.buffered.length > 0 ? `${video.buffered.end(0)}s` : "none"
             });
             
             if (video.error) {
               setError(`Video error: ${video.error.message} (Code: ${video.error.code})`);
-            } else if (video.networkState === 3) {
-              setError("Network error: Unable to load video");
-            } else if (video.readyState === 0) {
-              setError("Video format may not be supported");
+              setIsLoading(false);
             } else if (video.duration && video.duration > 0) {
               // Video is actually ready but events didn't fire properly
-              console.log("🔧 Force completing video setup");
+              console.log("🔧 Force completing video setup - video appears ready");
               handleVideoReady();
             } else {
-              // Try with a test video URL
-              setError("Video loading failed - trying test video");
-              const testUrl = "data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDE=";
-              video.src = testUrl;
+              console.log("❌ Video still not ready after timeout");
+              setError("Video format may not be supported or file is corrupted");
+              setIsLoading(false);
             }
-            setIsLoading(false);
           }
-        }, 8000);
+        }, 5000);
 
         return () => {
           if (timeoutId) clearTimeout(timeoutId);
@@ -252,10 +240,20 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
 
   const togglePlayPause = () => {
     if (videoRef.current) {
+      const video = videoRef.current;
+      console.log("🎮 Toggle play/pause:", {
+        currentState: isPlaying ? "playing" : "paused",
+        currentTime: video.currentTime,
+        duration: video.duration,
+        readyState: video.readyState
+      });
+      
       if (isPlaying) {
-        videoRef.current.pause();
+        video.pause();
       } else {
-        videoRef.current.play();
+        video.play().catch(err => {
+          console.error("❌ Play failed:", err);
+        });
       }
       setIsPlaying(!isPlaying);
     }
@@ -315,13 +313,18 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
           onCanPlayThrough={handleCanPlayThrough}
           onError={handleError}
           onTimeUpdate={handleTimeUpdate}
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
-          preload="metadata"
+          onPlay={() => {
+            console.log("▶️ Video play event fired");
+            setIsPlaying(true);
+          }}
+          onPause={() => {
+            console.log("⏸️ Video pause event fired");
+            setIsPlaying(false);
+          }}
+          preload="auto"
           controls={false}
           muted
           playsInline
-          crossOrigin="anonymous"
         />
         <canvas
           ref={canvasRef}
