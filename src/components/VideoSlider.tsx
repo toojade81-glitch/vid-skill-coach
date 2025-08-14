@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { Play, Pause } from "lucide-react";
@@ -19,73 +19,161 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>("");
+  const [loadingProgress, setLoadingProgress] = useState<string>("Initializing...");
 
-  useEffect(() => {
-    if (videoFile) {
-      console.log("Creating video URL for file:", videoFile.name, videoFile.type, videoFile.size);
-      setIsLoading(true);
-      setError("");
-      
-      const url = URL.createObjectURL(videoFile);
-      setVideoUrl(url);
-      
-      // Force loading after URL is set
-      const timer = setTimeout(() => {
-        if (videoRef.current && isLoading) {
-          console.log("Force checking video state");
-          const video = videoRef.current;
-          console.log("Video readyState:", video.readyState);
-          console.log("Video networkState:", video.networkState);
-          
-          if (video.readyState >= 1) { // HAVE_METADATA
-            handleVideoReady();
-          } else if (video.networkState === 3) { // NETWORK_NO_SOURCE
-            setError("Video format not supported");
-            setIsLoading(false);
-          }
-        }
-      }, 2000);
-      
-      return () => {
-        clearTimeout(timer);
-        URL.revokeObjectURL(url);
-      };
-    }
-  }, [videoFile]);
+  const resetVideoState = useCallback(() => {
+    setDuration(0);
+    setCurrentTime(initialTime);
+    setIsPlaying(false);
+    setIsLoading(true);
+    setError("");
+    setLoadingProgress("Initializing...");
+  }, [initialTime]);
 
-  const handleVideoReady = () => {
-    if (videoRef.current && videoRef.current.duration) {
-      console.log("Video ready, duration:", videoRef.current.duration);
-      setDuration(videoRef.current.duration);
+  const handleVideoReady = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    console.log("handleVideoReady called", {
+      readyState: video.readyState,
+      duration: video.duration,
+      videoWidth: video.videoWidth,
+      videoHeight: video.videoHeight
+    });
+
+    if (video.duration && video.duration > 0 && video.videoWidth > 0 && video.videoHeight > 0) {
+      console.log("Video fully ready with dimensions:", { duration: video.duration, width: video.videoWidth, height: video.videoHeight });
+      setDuration(video.duration);
       setIsLoading(false);
+      setLoadingProgress("Complete");
       
       // Set initial time if provided
-      if (initialTime > 0 && initialTime < videoRef.current.duration) {
-        videoRef.current.currentTime = initialTime;
+      if (initialTime > 0 && initialTime < video.duration) {
+        video.currentTime = initialTime;
         setCurrentTime(initialTime);
       }
+    } else {
+      console.log("Video not fully ready yet", { duration: video.duration, width: video.videoWidth, height: video.videoHeight });
     }
+  }, [initialTime]);
+
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    
+    if (videoFile) {
+      console.log("Processing new video file:", {
+        name: videoFile.name,
+        type: videoFile.type,
+        size: videoFile.size
+      });
+
+      resetVideoState();
+      setLoadingProgress("Creating video URL...");
+      
+      try {
+        const url = URL.createObjectURL(videoFile);
+        console.log("Created blob URL:", url);
+        setVideoUrl(url);
+        setLoadingProgress("Loading video...");
+
+        // Fallback timeout for stuck loading
+        timeoutId = setTimeout(() => {
+          if (isLoading) {
+            console.warn("Video loading timeout reached");
+            const video = videoRef.current;
+            if (video) {
+              console.log("Timeout state check:", {
+                readyState: video.readyState,
+                networkState: video.networkState,
+                error: video.error
+              });
+              
+              if (video.error) {
+                setError(`Video error: ${video.error.message}`);
+              } else if (video.networkState === 3) {
+                setError("Network error: Unable to load video");
+              } else if (video.readyState === 0) {
+                setError("Video format may not be supported");
+              } else {
+                // Force check if video is actually ready
+                handleVideoReady();
+              }
+              setIsLoading(false);
+            }
+          }
+        }, 5000);
+
+        return () => {
+          clearTimeout(timeoutId);
+          URL.revokeObjectURL(url);
+        };
+      } catch (error) {
+        console.error("Failed to create video URL:", error);
+        setError("Failed to process video file");
+        setIsLoading(false);
+      }
+    }
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [videoFile, isLoading, handleVideoReady, resetVideoState]);
+
+  const handleLoadStart = () => {
+    console.log("loadstart event fired");
+    setLoadingProgress("Loading started...");
   };
 
   const handleLoadedMetadata = () => {
     console.log("loadedmetadata event fired");
+    setLoadingProgress("Metadata loaded...");
     handleVideoReady();
   };
 
   const handleLoadedData = () => {
     console.log("loadeddata event fired");
+    setLoadingProgress("Data loaded...");
     handleVideoReady();
   };
 
   const handleCanPlay = () => {
     console.log("canplay event fired");
+    setLoadingProgress("Can play...");
+    handleVideoReady();
+  };
+
+  const handleCanPlayThrough = () => {
+    console.log("canplaythrough event fired");
+    setLoadingProgress("Ready to play...");
     handleVideoReady();
   };
 
   const handleError = (e: any) => {
     console.error("Video error:", e);
+    const video = e.target;
+    let errorMessage = "Unknown error";
+    
+    if (video?.error) {
+      switch (video.error.code) {
+        case 1:
+          errorMessage = "Video loading aborted";
+          break;
+        case 2:
+          errorMessage = "Network error";
+          break;
+        case 3:
+          errorMessage = "Video format not supported";
+          break;
+        case 4:
+          errorMessage = "Video not found";
+          break;
+        default:
+          errorMessage = video.error.message || "Unknown video error";
+      }
+    }
+    
     setIsLoading(false);
-    setError(`Failed to load video: ${e.target?.error?.message || 'Unknown error'}`);
+    setError(`Failed to load video: ${errorMessage}`);
   };
 
   const handleTimeUpdate = () => {
@@ -150,7 +238,7 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
       <div className={`bg-muted rounded-lg p-4 text-center ${className}`}>
         <div className="animate-pulse">
           <div className="w-full h-32 bg-muted-foreground/20 rounded mb-2"></div>
-          <div className="text-sm text-muted-foreground">Loading video...</div>
+          <div className="text-sm text-muted-foreground">{loadingProgress}</div>
         </div>
       </div>
     );
@@ -162,10 +250,13 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
         <video
           ref={videoRef}
           src={videoUrl}
+          key={videoFile.name + videoFile.size}
           className="w-full h-32 object-cover rounded-lg border border-border"
+          onLoadStart={handleLoadStart}
           onLoadedMetadata={handleLoadedMetadata}
           onLoadedData={handleLoadedData}
           onCanPlay={handleCanPlay}
+          onCanPlayThrough={handleCanPlayThrough}
           onError={handleError}
           onTimeUpdate={handleTimeUpdate}
           onPlay={() => setIsPlaying(true)}
@@ -174,7 +265,6 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
           controls={false}
           muted
           playsInline
-          crossOrigin="anonymous"
         />
         <canvas
           ref={canvasRef}
