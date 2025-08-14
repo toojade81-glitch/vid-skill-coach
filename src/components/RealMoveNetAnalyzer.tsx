@@ -338,133 +338,93 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
   };
 
   const drawKeypoints = (ctx: CanvasRenderingContext2D, keypoints: any[], width: number, height: number) => {
-    console.log("🎨 Drawing keypoints on canvas:", {
+    console.log("🎨 DEBUGGING: Starting keypoint drawing", {
       keypointsCount: keypoints.length,
       canvasSize: `${width}x${height}`,
-      sampleKeypoint: keypoints[0]
+      contextType: ctx.constructor.name
     });
     
-    // Test if canvas drawing works at all
+    // ALWAYS draw test elements to verify canvas works
     ctx.fillStyle = '#ff0000';
-    ctx.fillRect(10, 10, 50, 50);
-    console.log("🟥 Drew test red square");
+    ctx.fillRect(0, 0, 100, 100);
+    ctx.fillStyle = '#00ff00';
+    ctx.fillRect(width - 100, 0, 100, 100);
+    ctx.strokeStyle = '#0000ff';
+    ctx.lineWidth = 10;
+    ctx.strokeRect(50, 50, width - 100, height - 100);
+    console.log("🟦 ALWAYS drew test rectangles");
     
-    // Check keypoint format
-    const validKeypoints = keypoints.filter(kp => kp && typeof kp.x === 'number' && typeof kp.y === 'number' && kp.score > 0.3);
-    console.log("✅ Valid keypoints:", validKeypoints.length, "out of", keypoints.length);
-    
-    if (validKeypoints.length === 0) {
-      console.log("❌ No valid keypoints to draw");
+    if (!keypoints || keypoints.length === 0) {
+      console.log("❌ No keypoints provided");
       return;
     }
     
-    // MoveNet keypoint connections for skeleton
-    const connections = [
-      // Face
-      [0, 1], [0, 2], [1, 3], [2, 4],
-      // Torso
-      [5, 6], [5, 11], [6, 12], [11, 12],
-      // Left arm
-      [5, 7], [7, 9],
-      // Right arm  
-      [6, 8], [8, 10],
-      // Left leg
-      [11, 13], [13, 15],
-      // Right leg
-      [12, 14], [14, 16]
-    ];
-
-    // Draw connections first (skeleton)
-    ctx.strokeStyle = '#00ff00';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
+    // Log first few keypoints to see format
+    console.log("📊 Sample keypoints:", keypoints.slice(0, 3));
     
-    let connectionsDrawn = 0;
-    connections.forEach(([startIdx, endIdx]) => {
-      const startPoint = keypoints[startIdx];
-      const endPoint = keypoints[endIdx];
-      
-      if (startPoint?.score > 0.3 && endPoint?.score > 0.3) {
-        const startX = startPoint.x * width;
-        const startY = startPoint.y * height;
-        const endX = endPoint.x * width;
-        const endY = endPoint.y * height;
-        
-        console.log(`🔗 Drawing connection ${startIdx}-${endIdx}: (${startX.toFixed(1)}, ${startY.toFixed(1)}) -> (${endX.toFixed(1)}, ${endY.toFixed(1)})`);
-        
-        ctx.moveTo(startX, startY);
-        ctx.lineTo(endX, endY);
-        connectionsDrawn++;
-      }
-    });
-    
-    ctx.stroke();
-    console.log("🔗 Drew", connectionsDrawn, "skeleton connections");
-
-    // Draw keypoints (joints)
-    let keypointsDrawn = 0;
+    // Draw large circles for all keypoints regardless of score
     keypoints.forEach((keypoint, index) => {
-      if (keypoint.score > 0.3) {
+      if (keypoint && typeof keypoint.x === 'number' && typeof keypoint.y === 'number') {
         const x = keypoint.x * width;
         const y = keypoint.y * height;
         
-        console.log(`🎯 Drawing keypoint ${index}: (${x.toFixed(1)}, ${y.toFixed(1)}) score: ${keypoint.score.toFixed(2)}`);
-        
-        // Different colors for different body parts
-        if (index <= 4) ctx.fillStyle = '#ff0000'; // Head
-        else if (index <= 6) ctx.fillStyle = '#00ff00'; // Shoulders
-        else if (index <= 10) ctx.fillStyle = '#0000ff'; // Arms
-        else if (index <= 12) ctx.fillStyle = '#ffff00'; // Torso
-        else ctx.fillStyle = '#ff00ff'; // Legs
-        
+        // Draw large, obvious circles
+        ctx.fillStyle = index % 2 === 0 ? '#ff0000' : '#00ff00';
         ctx.beginPath();
-        ctx.arc(x, y, 8, 0, 2 * Math.PI);
+        ctx.arc(x, y, 20, 0, 2 * Math.PI);
         ctx.fill();
         
-        // Add white border
+        // Draw white border
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 4;
         ctx.stroke();
-        keypointsDrawn++;
+        
+        console.log(`🎯 Drew keypoint ${index} at (${x.toFixed(1)}, ${y.toFixed(1)}) score: ${keypoint.score || 'no score'}`);
       }
     });
     
-    console.log("🎯 Drew", keypointsDrawn, "keypoints total");
+    console.log("✅ Finished drawing keypoints");
   };
 
   const captureVideoFrame = (video: HTMLVideoElement, keypoints?: any[]): string => {
+    console.log("📸 CAPTURE STARTING", {
+      videoSize: `${video.videoWidth}x${video.videoHeight}`,
+      hasKeypoints: !!keypoints,
+      keypointsCount: keypoints?.length || 0
+    });
+    
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
+    
+    if (!ctx) {
+      console.log("❌ Failed to get canvas context");
+      return '';
+    }
     
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     
-    console.log("📸 Capturing frame:", {
-      canvasSize: `${canvas.width}x${canvas.height}`,
-      hasKeypoints: !!keypoints,
-      keypointsLength: keypoints?.length || 0
-    });
+    // Draw video frame
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    console.log("🖼️ Drew video frame");
     
-    if (ctx) {
-      // Draw video frame
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      console.log("🖼️ Drew video frame");
-      
-      // Draw keypoints if provided
-      if (keypoints && keypoints.length > 0) {
-        console.log("🎨 Adding keypoints overlay to captured frame");
-        drawKeypoints(ctx, keypoints, canvas.width, canvas.height);
-      } else {
-        console.log("⚠️ No keypoints provided for frame capture");
-      }
-      
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-      console.log("✅ Frame captured successfully, data URL length:", dataUrl.length);
-      return dataUrl;
+    // ALWAYS draw keypoints if provided
+    if (keypoints && keypoints.length > 0) {
+      console.log("🎨 Drawing keypoints overlay...");
+      drawKeypoints(ctx, keypoints, canvas.width, canvas.height);
+    } else {
+      console.log("⚠️ No keypoints to draw");
+      // Draw test pattern anyway to verify canvas works
+      ctx.fillStyle = '#ff0000';
+      ctx.fillRect(10, 10, 50, 50);
+      ctx.fillStyle = '#00ff00';
+      ctx.fillRect(canvas.width - 60, 10, 50, 50);
     }
     
-    console.log("❌ Failed to get canvas context");
-    return '';
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    console.log("✅ Captured frame, dataURL length:", dataUrl.length);
+    
+    return dataUrl;
   };
 
   const analyzeVideo = async () => {
