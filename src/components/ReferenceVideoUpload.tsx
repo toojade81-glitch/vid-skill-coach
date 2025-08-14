@@ -42,9 +42,14 @@ const ReferenceVideoUpload: React.FC<ReferenceVideoUploadProps> = ({
       // Create unique filename
       const fileExt = file.name.split('.').pop();
       const fileName = `${skill.toLowerCase()}-reference-${Date.now()}.${fileExt}`;
-      const filePath = `reference-videos/${fileName}`;
+      const filePath = `${fileName}`; // Simplified path
 
-      console.log("Uploading reference video:", fileName);
+      console.log("🚀 Starting upload:", {
+        fileName,
+        fileSize: file.size,
+        fileType: file.type,
+        bucket: 'reference-videos'
+      });
 
       // Upload to Supabase Storage
       const { data, error } = await supabase.storage
@@ -55,23 +60,29 @@ const ReferenceVideoUpload: React.FC<ReferenceVideoUploadProps> = ({
         });
 
       if (error) {
-        console.error("Upload error:", error);
-        throw error;
+        console.error("❌ Upload error details:", {
+          message: error.message,
+          error: error
+        });
+        throw new Error(`Upload failed: ${error.message}`);
       }
 
+      console.log("✅ Upload successful:", data);
+
       // Get public URL
-      const { data: { publicUrl } } = supabase.storage
+      const { data: urlData } = supabase.storage
         .from('reference-videos')
         .getPublicUrl(filePath);
 
-      console.log("Reference video uploaded successfully:", publicUrl);
+      const publicUrl = urlData.publicUrl;
+      console.log("🔗 Public URL generated:", publicUrl);
       
       onReferenceVideoUploaded(publicUrl);
       toast.success("Reference video uploaded successfully!");
 
     } catch (error) {
-      console.error("Error uploading reference video:", error);
-      toast.error("Failed to upload reference video");
+      console.error("💥 Upload error:", error);
+      toast.error(`Failed to upload: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setUploading(false);
       setUploadProgress(0);
