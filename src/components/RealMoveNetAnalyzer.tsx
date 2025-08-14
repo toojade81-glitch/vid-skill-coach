@@ -337,7 +337,66 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
     return { movement: avgMovement, volleyballAction };
   };
 
-  const captureVideoFrame = (video: HTMLVideoElement): string => {
+  const drawKeypoints = (ctx: CanvasRenderingContext2D, keypoints: any[], width: number, height: number) => {
+    // MoveNet keypoint connections for skeleton
+    const connections = [
+      // Face
+      [0, 1], [0, 2], [1, 3], [2, 4],
+      // Torso
+      [5, 6], [5, 11], [6, 12], [11, 12],
+      // Left arm
+      [5, 7], [7, 9],
+      // Right arm  
+      [6, 8], [8, 10],
+      // Left leg
+      [11, 13], [13, 15],
+      // Right leg
+      [12, 14], [14, 16]
+    ];
+
+    // Draw connections first (skeleton)
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    
+    connections.forEach(([startIdx, endIdx]) => {
+      const startPoint = keypoints[startIdx];
+      const endPoint = keypoints[endIdx];
+      
+      if (startPoint?.score > 0.3 && endPoint?.score > 0.3) {
+        ctx.moveTo(startPoint.x * width, startPoint.y * height);
+        ctx.lineTo(endPoint.x * width, endPoint.y * height);
+      }
+    });
+    
+    ctx.stroke();
+
+    // Draw keypoints (joints)
+    keypoints.forEach((keypoint, index) => {
+      if (keypoint.score > 0.3) {
+        const x = keypoint.x * width;
+        const y = keypoint.y * height;
+        
+        // Different colors for different body parts
+        if (index <= 4) ctx.fillStyle = '#ff0000'; // Head
+        else if (index <= 6) ctx.fillStyle = '#00ff00'; // Shoulders
+        else if (index <= 10) ctx.fillStyle = '#0000ff'; // Arms
+        else if (index <= 12) ctx.fillStyle = '#ffff00'; // Torso
+        else ctx.fillStyle = '#ff00ff'; // Legs
+        
+        ctx.beginPath();
+        ctx.arc(x, y, 6, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // Add white border
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    });
+  };
+
+  const captureVideoFrame = (video: HTMLVideoElement, keypoints?: any[]): string => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
@@ -345,7 +404,14 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
     canvas.height = video.videoHeight;
     
     if (ctx) {
+      // Draw video frame
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Draw keypoints if provided
+      if (keypoints && keypoints.length > 0) {
+        drawKeypoints(ctx, keypoints, canvas.width, canvas.height);
+      }
+      
       return canvas.toDataURL('image/jpeg', 0.8);
     }
     
@@ -451,7 +517,7 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
               // Capture frame for this rubric component if we haven't already (take the best quality one)
               if (!rubricFrames[poseType as keyof RubricFrames] || 
                   poseQuality > Math.max(...componentScores[poseType].slice(0, -1))) {
-                rubricFrames[poseType as keyof RubricFrames] = captureVideoFrame(video);
+                rubricFrames[poseType as keyof RubricFrames] = captureVideoFrame(video, poses[0].keypoints);
                 console.log(`📸 Captured ${poseType} frame at ${time.toFixed(1)}s (quality: ${poseQuality}/3, movement: ${movement.toFixed(1)})`);
               }
             }
