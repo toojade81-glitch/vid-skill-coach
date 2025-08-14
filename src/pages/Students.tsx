@@ -6,8 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Plus, Upload, Download, Search, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 
 interface Student {
   student_id: string;
@@ -22,7 +21,6 @@ const Students = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const { toast } = useToast();
 
   useEffect(() => {
     fetchStudents();
@@ -30,19 +28,14 @@ const Students = () => {
 
   const fetchStudents = async () => {
     try {
-      const { data, error } = await supabase
-        .from('students')
-        .select('*')
-        .order('name');
-      
-      if (error) throw error;
-      setStudents(data || []);
+      // Since we're not using a database, we'll use localStorage for demo
+      const storedStudents = localStorage.getItem('volleyball-students');
+      if (storedStudents) {
+        setStudents(JSON.parse(storedStudents));
+      }
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to fetch students",
-        variant: "destructive"
-      });
+      console.error("Error loading students:", error);
+      toast.error("Failed to load students");
     } finally {
       setLoading(false);
     }
@@ -72,8 +65,16 @@ const Students = () => {
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-primary">Students</h1>
-            <p className="text-muted-foreground">Manage your student roster</p>
+            <p className="text-muted-foreground">Manage your student roster (stored locally)</p>
           </div>
+        </div>
+
+        {/* Privacy Notice */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <p className="text-sm text-blue-800">
+            <strong>Privacy Notice:</strong> Student data is stored locally on your device. 
+            No personal information is sent to external servers.
+          </p>
         </div>
 
         {/* Actions Bar */}
@@ -90,21 +91,17 @@ const Students = () => {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" disabled>
               <Download className="w-4 h-4 mr-2" />
               Export CSV
             </Button>
-            <Button variant="outline" size="sm" asChild>
-              <Link to="/students/import">
-                <Upload className="w-4 h-4 mr-2" />
-                Import CSV
-              </Link>
+            <Button variant="outline" size="sm" disabled>
+              <Upload className="w-4 h-4 mr-2" />
+              Import CSV
             </Button>
-            <Button size="sm" asChild>
-              <Link to="/students/new">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Student
-              </Link>
+            <Button size="sm" disabled>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Student
             </Button>
           </div>
         </div>
@@ -117,52 +114,15 @@ const Students = () => {
           <CardContent>
             {loading ? (
               <div className="text-center py-8">Loading students...</div>
-            ) : filteredStudents.length === 0 ? (
+            ) : (
               <div className="text-center py-8">
                 <p className="text-muted-foreground mb-4">
-                  {searchTerm ? "No students found matching your search." : "No students added yet."}
+                  Student management is disabled in privacy-focused mode.
                 </p>
-                {!searchTerm && (
-                  <Button asChild>
-                    <Link to="/students/import">
-                      <Upload className="w-4 h-4 mr-2" />
-                      Import Students
-                    </Link>
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Class</TableHead>
-                      <TableHead>Gender</TableHead>
-                      <TableHead>Age</TableHead>
-                      <TableHead>Date of Birth</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredStudents.map((student) => (
-                      <TableRow key={student.student_id}>
-                        <TableCell className="font-medium">{student.name}</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">{student.class}</Badge>
-                        </TableCell>
-                        <TableCell>{student.sex}</TableCell>
-                        <TableCell>{calculateAge(student.dob)}</TableCell>
-                        <TableCell>{new Date(student.dob).toLocaleDateString()}</TableCell>
-                        <TableCell>
-                          <Button variant="outline" size="sm">
-                            Edit
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <p className="text-sm text-muted-foreground">
+                  The app now works completely anonymously without storing any personal student information.
+                  Students can record their assessments directly without needing to be registered in the system.
+                </p>
               </div>
             )}
           </CardContent>

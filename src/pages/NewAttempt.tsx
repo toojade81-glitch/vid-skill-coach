@@ -9,7 +9,6 @@ import { ArrowLeft, Video, Camera, Upload, Square, Play } from "lucide-react";
 import { toast } from "sonner";
 import PoseAnalyzer from "@/components/PoseAnalyzer";
 import ScoreAdjustment from "@/components/ScoreAdjustment";
-import { supabase } from "@/integrations/supabase/client";
 
 const NewAttempt = () => {
   const navigate = useNavigate();

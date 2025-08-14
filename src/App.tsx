@@ -8,6 +8,9 @@ import Home from "./pages/Home";
 import NewAttempt from "./pages/NewAttempt";
 import History from "./pages/History";
 import About from "./pages/About";
+import Students from "./pages/Students";
+import Skills from "./pages/Skills";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +27,9 @@ const App = () => (
           <Route path="/new-attempt" element={<NewAttempt />} />
           <Route path="/history" element={<History />} />
           <Route path="/about" element={<About />} />
+          <Route path="/students" element={<Students />} />
+          <Route path="/skills" element={<Skills />} />
+          <Route path="/reports" element={<Reports />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
