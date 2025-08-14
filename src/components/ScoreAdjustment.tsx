@@ -14,37 +14,37 @@ const SKILL_CRITERIA = {
     readyFootwork: {
       name: "Ready Position & Footwork",
       descriptions: {
-        0: "Not demonstrated - poor stance, no knee flex",
-        1: "Inconsistent - minimal knee flex, unstable base", 
-        2: "Mostly correct - good knee flex, minor stability issues",
-        3: "Consistent & correct - neutral stance, proper knee flex, stable movement"
+        0: "No ready stance; feet stationary; poor positioning under ball.",
+        1: "Ready stance inconsistent; slow or incomplete movement to get under ball.",
+        2: "Consistent low stance; some movement to adjust, minor positioning errors.",
+        3: "Consistently low, balanced stance; quick, small steps to get perfectly under ball."
       }
     },
     handShapeContact: {
       name: "Hand Shape & Contact Zone",
       descriptions: {
-        0: "Not demonstrated - poor hand position, contact too low",
-        1: "Inconsistent - contact below optimal zone",
-        2: "Mostly correct - good hand shape, contact near forehead",
-        3: "Consistent & correct - perfect triangle shape, contact above forehead"
+        0: "Hands apart or flat; contact well below chin/neck.",
+        1: "Hands form partial shape; contact at chin/neck level.",
+        2: "Triangle/window formed; contact just above forehead but slightly low.",
+        3: "Perfect triangle/window; contact above forehead in correct \"setting zone.\""
       }
     },
     alignmentExtension: {
       name: "Body Alignment & Extension", 
       descriptions: {
-        0: "Not demonstrated - poor body alignment",
-        1: "Inconsistent - limited extension sequence",
-        2: "Mostly correct - good alignment, minor extension issues",
-        3: "Consistent & correct - perfect sequence and target alignment"
+        0: "Shoulders/hips misaligned to target; no upward extension.",
+        1: "Minor alignment; limited knee/hip/arm extension.",
+        2: "Mostly square to target; good upward extension but minor sequencing errors.",
+        3: "Fully square to target; smooth knees→hips→arms extension in correct order."
       }
     },
     followThroughControl: {
       name: "Follow-Through & Ball Control",
       descriptions: {
-        0: "Not demonstrated - no follow-through",
-        1: "Inconsistent - limited follow-through direction",
-        2: "Mostly correct - good follow-through, minor control issues", 
-        3: "Consistent & correct - perfect follow-through to target"
+        0: "Arms/wrists drop immediately; ball control inconsistent.",
+        1: "Short or abrupt follow-through; ball occasionally off target.",
+        2: "Controlled follow-through to target; ball mostly accurate.",
+        3: "Smooth follow-through to target; consistent arc, height, and accuracy."
       }
     }
   },
@@ -52,37 +52,37 @@ const SKILL_CRITERIA = {
     readyPlatform: {
       name: "Ready Position & Platform",
       descriptions: {
-        0: "Not demonstrated - poor ready position, bent arms",
-        1: "Inconsistent - minimal knee flex, inconsistent platform",
-        2: "Mostly correct - good ready position, mostly straight arms",
-        3: "Consistent & correct - low base, locked elbows, flat platform"
+        0: "Upright stance; bent arms; no platform formed.",
+        1: "Some knee flexion; arms bent or platform uneven.",
+        2: "Low, balanced stance; elbows mostly locked; fairly flat platform.",
+        3: "Low, stable stance; elbows locked; perfectly flat, steady platform."
       }
     },
     contactAngle: {
       name: "Contact Point & Angle",
       descriptions: {
-        0: "Not demonstrated - contact too high or poor angle",
-        1: "Inconsistent - contact point needs work",
-        2: "Mostly correct - good contact point, minor angle issues",
-        3: "Consistent & correct - perfect mid-forearm contact below waist"
+        0: "Contact at wrists or hands; ball angle uncontrolled.",
+        1: "Contact on lower forearms but angle inconsistent.",
+        2: "Contact on mid-forearms; platform angle mostly directs ball upward/forward.",
+        3: "Contact on mid-forearms below waist; precise platform angle to target."
       }
     },
     legDriveShoulder: {
       name: "Leg Drive & Shoulder Lift",
       descriptions: {
-        0: "Not demonstrated - no leg drive",
-        1: "Inconsistent - minimal leg involvement", 
-        2: "Mostly correct - good leg drive, minor shoulder issues",
-        3: "Consistent & correct - power from legs, controlled shoulder lift"
+        0: "No upward drive; swing arms instead of using legs.",
+        1: "Minimal leg extension; uneven shoulder motion.",
+        2: "Legs provide most power; subtle shoulder lift assists control.",
+        3: "Smooth, powerful leg drive with coordinated shoulder lift for perfect control."
       }
     },
     followThroughControl: {
       name: "Follow-Through & Control",
       descriptions: {
-        0: "Not demonstrated - no platform maintenance",
-        1: "Inconsistent - platform breaks down quickly",
-        2: "Mostly correct - maintains platform, minor control issues",
-        3: "Consistent & correct - stable platform throughout"
+        0: "Arms/platform collapse immediately after contact; ball uncontrolled.",
+        1: "Platform drops quickly; ball sometimes accurate.",
+        2: "Platform maintained briefly; ball mostly on target.",
+        3: "Platform held steady after contact; ball consistently accurate to target."
       }
     }
   }
@@ -114,10 +114,9 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange }: ScoreAdjustmentPr
       {Object.entries(criteria).map(([key, criterion]) => (
         <Card key={key} className="p-4">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">{criterion.name}</CardTitle>
-            <div className="text-sm font-medium text-primary">
-              Score: {scores[key] || 0}/3
-            </div>
+            <CardTitle className="text-base leading-tight">
+              {criterion.name} — Score: {scores[key] || 0} — {criterion.descriptions[scores[key] as keyof typeof criterion.descriptions] || criterion.descriptions[0]}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -138,8 +137,22 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange }: ScoreAdjustmentPr
               </div>
             </div>
             
-            <div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
-              <strong>Score {scores[key] || 0}:</strong> {criterion.descriptions[scores[key] as keyof typeof criterion.descriptions] || criterion.descriptions[0]}
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-muted-foreground">Score Descriptions:</div>
+              <div className="space-y-1 text-xs">
+                {Object.entries(criterion.descriptions).map(([score, description]) => (
+                  <div 
+                    key={score} 
+                    className={`p-2 rounded ${
+                      parseInt(score) === (scores[key] || 0) 
+                        ? 'bg-primary/10 border border-primary/20 text-primary' 
+                        : 'bg-muted/30 text-muted-foreground'
+                    }`}
+                  >
+                    <span className="font-medium">{score}:</span> {description}
+                  </div>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
