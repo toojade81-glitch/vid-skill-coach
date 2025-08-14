@@ -48,7 +48,7 @@ const Index = () => {
                 </p>
                 <Button asChild className="w-full">
                   <Link to="/new-attempt">
-                    Start Recording
+                    Start
                   </Link>
                 </Button>
               </CardContent>

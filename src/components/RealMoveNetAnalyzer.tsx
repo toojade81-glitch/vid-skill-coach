@@ -101,10 +101,18 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: R
           let detector = null;
           VS.loadModel = async function(){
             if(detector) return detector;
-            const model = window.poseDetection.SupportedModels.MoveNet;
-            detector = await window.poseDetection.createDetector(model, { modelType:'Thunder', enableSmoothing:true });
-            document.getElementById('aiStatus').textContent = 'MoveNet ready.';
-            return detector;
+            try {
+              detector = await window.poseDetection.createDetector(
+                window.poseDetection.SupportedModels.MoveNet, 
+                { modelType: 'Lightning' }
+              );
+              document.getElementById('aiStatus').textContent = 'MoveNet ready.';
+              return detector;
+            } catch (error) {
+              console.error('[VolleyballScorer] Model load failed:', error);
+              document.getElementById('aiStatus').textContent = 'MoveNet model load failed.';
+              throw error;
+            }
           };
           
           // Minimal scoring with real pose analysis
