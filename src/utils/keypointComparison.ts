@@ -55,11 +55,11 @@ const calculatePoseSimilarity = (userKeypoints: number[][], refKeypoints: number
     const userPoint = userKeypoints[i];
     const refPoint = refKeypoints[i];
     
-    // Only compare points with sufficient confidence
-    if (userPoint[2] > 0.3 && refPoint[2] > 0.3) {
+    // Only compare points with sufficient confidence (lowered threshold)
+    if (userPoint[2] > 0.2 && refPoint[2] > 0.2) {
       const distance = calculateDistance(userPoint, refPoint);
-      // Convert distance to similarity score (closer = higher score)
-      const similarity = Math.max(0, 1 - distance / 200); // Normalize to 0-1
+      // Convert distance to similarity score with more forgiving normalization
+      const similarity = Math.max(0, 1 - distance / 0.5); // Much more forgiving threshold
       totalSimilarity += similarity;
       validPoints++;
     }
@@ -91,7 +91,7 @@ const analyzeMovementPhases = (frames: KeypointFrame[]): {
     let validPoints = 0;
     
     for (let i = 0; i < frame.keypoints.length; i++) {
-      if (frame.keypoints[i][2] > 0.3 && prevFrame.keypoints[i][2] > 0.3) {
+      if (frame.keypoints[i][2] > 0.2 && prevFrame.keypoints[i][2] > 0.2) {
         const movement = calculateDistance(frame.keypoints[i], prevFrame.keypoints[i]);
         totalMovement += movement;
         validPoints++;
@@ -218,7 +218,7 @@ const calculateKeyPointDeviations = (
       const userPoint = userFrames[frameIndex].keypoints[pointIndex];
       const refPoint = refFrames[frameIndex].keypoints[pointIndex];
       
-      if (userPoint[2] > 0.3 && refPoint[2] > 0.3) {
+      if (userPoint[2] > 0.2 && refPoint[2] > 0.2) {
         const deviation = calculateDistance(userPoint, refPoint);
         totalDeviation += deviation;
         validComparisons++;
