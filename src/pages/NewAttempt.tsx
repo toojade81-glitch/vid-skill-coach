@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Video, Camera, Upload, Square, Play } from "lucide-react";
+import { ArrowLeft, Video, Camera, Upload, Square, Play, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import PoseAnalyzer from "@/components/PoseAnalyzer";
 import ScoreAdjustment from "@/components/ScoreAdjustment";
@@ -25,26 +25,30 @@ const NewAttempt = () => {
   const [confidence, setConfidence] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("user");
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
-  const startCamera = async () => {
+  const startCamera = async (facingMode: "user" | "environment" = cameraFacing) => {
     try {
-      console.log("🎥 Starting camera access...");
+      console.log(`🎥 Starting camera with facing: ${facingMode}...`);
+      
+      // Stop existing stream if any
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        setStream(null);
+      }
       
       // Check if getUserMedia is supported
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error("Camera API not supported in this browser");
       }
 
-      // Try different camera configurations for better compatibility
+      // Try the requested camera first, then fallback
       const constraints = [
-        // Try front camera first (more likely to work)
-        { video: { facingMode: "user" }, audio: false },
-        // Fallback to any available camera
-        { video: true, audio: false },
-        // Try back camera as last resort
-        { video: { facingMode: "environment" }, audio: false }
+        { video: { facingMode: facingMode }, audio: false },
+        { video: { facingMode: { exact: facingMode } }, audio: false },
+        { video: true, audio: false } // Ultimate fallback
       ];
 
       let mediaStream = null;
@@ -68,6 +72,7 @@ const NewAttempt = () => {
 
       console.log("📹 Video tracks:", mediaStream.getVideoTracks());
       setStream(mediaStream);
+      setCameraFacing(facingMode);
       
       // Wait a moment for state to update
       setTimeout(() => {
@@ -100,6 +105,12 @@ const NewAttempt = () => {
       console.error("❌ Camera error:", error);
       toast.error(`Camera failed: ${error.message}`);
     }
+  };
+
+  const switchCamera = async () => {
+    const newFacing = cameraFacing === "user" ? "environment" : "user";
+    console.log(`🔄 Switching camera from ${cameraFacing} to ${newFacing}`);
+    await startCamera(newFacing);
   };
 
   const stopCamera = () => {
@@ -313,7 +324,7 @@ const NewAttempt = () => {
               {!stream && !isRecording && (
                 <div className="space-y-4">
                   <Button
-                    onClick={startCamera}
+                    onClick={() => startCamera()}
                     className="w-full"
                     size="lg"
                   >
@@ -330,12 +341,25 @@ const NewAttempt = () => {
               {stream && !isRecording && (
                 <div className="space-y-4">
                   <div className="relative bg-black rounded-lg overflow-hidden border-2 border-dashed border-white/30">
-                    {/* Camera Status Indicator */}
-                    <div className="absolute top-2 left-2 z-10">
+                    {/* Camera Controls */}
+                    <div className="absolute top-2 left-2 z-10 flex items-center gap-2">
                       <div className="flex items-center gap-2 bg-black/70 px-2 py-1 rounded text-white text-xs">
                         <div className={`w-2 h-2 rounded-full ${stream ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
                         {stream ? 'Camera Active' : 'Camera Inactive'}
                       </div>
+                    </div>
+                    
+                    <div className="absolute top-2 right-2 z-10">
+                      <Button
+                        onClick={switchCamera}
+                        variant="secondary"
+                        size="sm"
+                        className="bg-black/70 hover:bg-black/80 text-white border-white/20"
+                        disabled={!stream}
+                      >
+                        <RotateCcw className="h-4 w-4 mr-1" />
+                        {cameraFacing === "user" ? "Rear" : "Front"}
+                      </Button>
                     </div>
                     
                     <video
@@ -344,7 +368,9 @@ const NewAttempt = () => {
                       muted
                       playsInline
                       className="w-full h-64 object-cover bg-gray-900"
-                      style={{ transform: 'scaleX(-1)' }}
+                      style={{ 
+                        transform: cameraFacing === "user" ? 'scaleX(-1)' : 'none' 
+                      }}
                       onLoadStart={() => console.log("📱 Video load started")}
                       onCanPlay={() => console.log("🎬 Video can play")}
                       onPlaying={() => console.log("▶️ Video is playing")}
@@ -353,6 +379,13 @@ const NewAttempt = () => {
                         toast.error("Video display error");
                       }}
                     />
+                    
+                    {/* Camera info overlay */}
+                    <div className="absolute bottom-2 left-2 z-10">
+                      <div className="bg-black/70 px-2 py-1 rounded text-white text-xs">
+                        {cameraFacing === "user" ? "📱 Front Camera" : "📹 Rear Camera"}
+                      </div>
+                    </div>
                     
                     {/* Overlay when no stream */}
                     {!stream && (
