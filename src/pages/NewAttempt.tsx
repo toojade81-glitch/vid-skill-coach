@@ -309,6 +309,34 @@ const NewAttempt = () => {
 
         {step === "review" && (
           <div className="space-y-4">
+            {/* DEBUG: Log review page state */}
+            {(() => {
+              console.log("🔍 REVIEW PAGE DEBUG:", {
+                step,
+                hasVideoFile: !!videoFile,
+                videoFileName: videoFile?.name,
+                videoFileSize: videoFile?.size,
+                hasAutoScores: !!autoScores,
+                autoScoresKeys: Object.keys(autoScores || {}),
+                hasRubricFrames: !!rubricFrames,
+                rubricFramesKeys: Object.keys(rubricFrames || {}),
+                skill: formData.skill,
+                confidence
+              });
+              return null;
+            })()}
+            
+            {/* Add page header for debugging */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="text-xs font-medium text-blue-900 mb-1">🔧 DEBUG INFO:</div>
+              <div className="text-xs text-blue-800 space-y-1">
+                <div>Video File: {videoFile ? `${videoFile.name} (${(videoFile.size / 1024 / 1024).toFixed(1)}MB)` : 'None'}</div>
+                <div>Skill: {formData.skill}</div>
+                <div>Auto Scores: {Object.keys(autoScores || {}).length} criteria</div>
+                <div>Rubric Frames: {Object.keys(rubricFrames || {}).length} frames</div>
+                <div>Confidence: {Math.round(confidence * 100)}%</div>
+              </div>
+            </div>
             <Card className="shadow-lg border-amber-200 bg-amber-50">
               <CardHeader>
                 <CardTitle className="text-amber-800 flex items-center gap-2">

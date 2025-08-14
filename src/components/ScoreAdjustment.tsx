@@ -256,6 +256,25 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, 
             {/* Video scrubber for manual frame selection */}
             {videoFile && (
               <div className="mb-4">
+                {/* DEBUG: Log VideoSlider component state */}
+                {(() => {
+                  console.log("🎬 VIDEOSLIDER DEBUG:", {
+                    hasVideoFile: !!videoFile,
+                    videoFileName: videoFile.name,
+                    videoFileType: videoFile.type,
+                    videoFileSize: videoFile.size,
+                    componentRendering: true
+                  });
+                  return null;
+                })()}
+                
+                <div className="bg-green-50 border border-green-200 rounded-lg p-2 mb-2">
+                  <div className="text-xs font-medium text-green-900 mb-1">🎥 VIDEO DEBUG:</div>
+                  <div className="text-xs text-green-800">
+                    File: {videoFile.name} | Type: {videoFile.type} | Size: {(videoFile.size / 1024 / 1024).toFixed(1)}MB
+                  </div>
+                </div>
+                
                 <div className="text-xs font-medium text-muted-foreground mb-2">Manual Frame Review:</div>
                 <VideoSlider
                   videoFile={videoFile}

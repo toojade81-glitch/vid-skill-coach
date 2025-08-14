@@ -21,40 +21,76 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
 
   // Create video URL when component mounts or videoFile changes
   useEffect(() => {
+    console.log("🎬 VideoSlider useEffect triggered", {
+      hasVideoFile: !!videoFile,
+      fileName: videoFile?.name,
+      fileSize: videoFile?.size,
+      fileType: videoFile?.type
+    });
+
     if (!videoFile) {
+      console.log("❌ No video file provided to VideoSlider");
       setError("No video file provided");
       setIsLoading(false);
       return;
     }
 
-    console.log("📁 Loading video file:", videoFile.name);
+    console.log("📁 Processing video file:", {
+      name: videoFile.name,
+      type: videoFile.type,
+      size: `${(videoFile.size / 1024 / 1024).toFixed(2)}MB`,
+      lastModified: new Date(videoFile.lastModified).toISOString()
+    });
+    
     setError("");
     setIsLoading(true);
 
-    // Create object URL for the video file
-    const videoUrl = URL.createObjectURL(videoFile);
-    console.log("🔗 Created video URL:", videoUrl);
+    try {
+      // Create object URL for the video file
+      const videoUrl = URL.createObjectURL(videoFile);
+      console.log("🔗 Created video URL successfully:", videoUrl);
 
-    const video = videoRef.current;
-    if (video) {
-      video.src = videoUrl;
-      video.load(); // Force reload
+      const video = videoRef.current;
+      if (video) {
+        console.log("📺 Setting video src and loading...");
+        video.src = videoUrl;
+        video.load(); // Force reload
+        console.log("✅ Video element configured with src:", video.src);
+      } else {
+        console.error("❌ Video ref is null!");
+        setError("Video element not available");
+        setIsLoading(false);
+      }
+
+      // Cleanup function
+      return () => {
+        URL.revokeObjectURL(videoUrl);
+        console.log("🧹 Cleaned up video URL:", videoUrl);
+      };
+    } catch (error) {
+      console.error("❌ Error creating video URL:", error);
+      setError(`Failed to create video URL: ${error}`);
+      setIsLoading(false);
     }
-
-    // Cleanup function
-    return () => {
-      URL.revokeObjectURL(videoUrl);
-      console.log("🧹 Cleaned up video URL");
-    };
   }, [videoFile]);
 
   const handleVideoLoaded = () => {
     const video = videoRef.current;
-    if (video && video.duration) {
+    console.log("🎉 handleVideoLoaded called", {
+      hasVideo: !!video,
+      duration: video?.duration,
+      readyState: video?.readyState,
+      videoWidth: video?.videoWidth,
+      videoHeight: video?.videoHeight,
+      src: video?.src
+    });
+    
+    if (video && video.duration && video.duration > 0) {
       console.log("✅ Video loaded successfully:", {
         duration: video.duration,
         width: video.videoWidth,
-        height: video.videoHeight
+        height: video.videoHeight,
+        readyState: video.readyState
       });
       
       setDuration(video.duration);
@@ -62,15 +98,30 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
       
       // Set initial time if provided
       if (initialTime > 0 && initialTime < video.duration) {
+        console.log("⏰ Setting initial time:", initialTime);
         video.currentTime = initialTime;
         setCurrentTime(initialTime);
       }
+    } else {
+      console.warn("⚠️ Video loaded but duration not available yet", {
+        duration: video?.duration,
+        readyState: video?.readyState
+      });
     }
   };
 
   const handleVideoError = (e: any) => {
     console.error("❌ Video loading error:", e);
-    setError("Failed to load video. Please check the file format.");
+    const video = videoRef.current;
+    console.error("Video error details:", {
+      error: video?.error,
+      errorCode: video?.error?.code,
+      errorMessage: video?.error?.message,
+      src: video?.src,
+      readyState: video?.readyState,
+      networkState: video?.networkState
+    });
+    setError(`Failed to load video: ${video?.error?.message || 'Unknown error'}`);
     setIsLoading(false);
   };
 
@@ -110,15 +161,27 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
 
   const togglePlayPause = () => {
     const video = videoRef.current;
+    console.log("🎮 togglePlayPause called", {
+      hasVideo: !!video,
+      isPlaying,
+      currentTime: video?.currentTime,
+      duration: video?.duration,
+      readyState: video?.readyState
+    });
+    
     if (video) {
       if (isPlaying) {
+        console.log("⏸️ Pausing video");
         video.pause();
       } else {
+        console.log("▶️ Playing video");
         video.play().catch(err => {
-          console.error("Play failed:", err);
+          console.error("❌ Play failed:", err);
         });
       }
       setIsPlaying(!isPlaying);
+    } else {
+      console.error("❌ Video ref is null in togglePlayPause");
     }
   };
 
@@ -132,8 +195,21 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
     return (
       <div className={`bg-destructive/10 border border-destructive/20 rounded-lg p-4 text-center ${className}`}>
         <div className="text-sm text-destructive mb-2">{error}</div>
-        <div className="text-xs text-muted-foreground">
-          File: {videoFile?.name} ({videoFile ? (videoFile.size / 1024 / 1024).toFixed(1) : 0}MB)
+        <div className="text-xs text-muted-foreground mb-2">
+          File: {videoFile?.name} ({videoFile ? (videoFile.size / 1024 / 1024).toFixed(1) : 0}MB, {videoFile?.type})
+        </div>
+        {/* Add a fallback basic video element */}
+        <div className="mt-2">
+          <div className="text-xs text-muted-foreground mb-1">Fallback player:</div>
+          <video
+            controls
+            className="w-full h-24 rounded border"
+            src={videoFile ? URL.createObjectURL(videoFile) : ''}
+            playsInline
+            muted
+          >
+            Your browser does not support video playback.
+          </video>
         </div>
       </div>
     );
