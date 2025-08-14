@@ -338,7 +338,25 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
   };
 
   const drawKeypoints = (ctx: CanvasRenderingContext2D, keypoints: any[], width: number, height: number) => {
-    console.log("🎨 Drawing keypoints:", keypoints.length, "keypoints on", width, "x", height, "canvas");
+    console.log("🎨 Drawing keypoints on canvas:", {
+      keypointsCount: keypoints.length,
+      canvasSize: `${width}x${height}`,
+      sampleKeypoint: keypoints[0]
+    });
+    
+    // Test if canvas drawing works at all
+    ctx.fillStyle = '#ff0000';
+    ctx.fillRect(10, 10, 50, 50);
+    console.log("🟥 Drew test red square");
+    
+    // Check keypoint format
+    const validKeypoints = keypoints.filter(kp => kp && typeof kp.x === 'number' && typeof kp.y === 'number' && kp.score > 0.3);
+    console.log("✅ Valid keypoints:", validKeypoints.length, "out of", keypoints.length);
+    
+    if (validKeypoints.length === 0) {
+      console.log("❌ No valid keypoints to draw");
+      return;
+    }
     
     // MoveNet keypoint connections for skeleton
     const connections = [
@@ -372,6 +390,8 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         const endX = endPoint.x * width;
         const endY = endPoint.y * height;
         
+        console.log(`🔗 Drawing connection ${startIdx}-${endIdx}: (${startX.toFixed(1)}, ${startY.toFixed(1)}) -> (${endX.toFixed(1)}, ${endY.toFixed(1)})`);
+        
         ctx.moveTo(startX, startY);
         ctx.lineTo(endX, endY);
         connectionsDrawn++;
@@ -387,6 +407,8 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       if (keypoint.score > 0.3) {
         const x = keypoint.x * width;
         const y = keypoint.y * height;
+        
+        console.log(`🎯 Drawing keypoint ${index}: (${x.toFixed(1)}, ${y.toFixed(1)}) score: ${keypoint.score.toFixed(2)}`);
         
         // Different colors for different body parts
         if (index <= 4) ctx.fillStyle = '#ff0000'; // Head
@@ -407,7 +429,7 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       }
     });
     
-    console.log("🎯 Drew", keypointsDrawn, "keypoints");
+    console.log("🎯 Drew", keypointsDrawn, "keypoints total");
   };
 
   const captureVideoFrame = (video: HTMLVideoElement, keypoints?: any[]): string => {
@@ -417,11 +439,16 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     
-    console.log("📸 Capturing frame:", canvas.width, "x", canvas.height, "with keypoints:", !!keypoints);
+    console.log("📸 Capturing frame:", {
+      canvasSize: `${canvas.width}x${canvas.height}`,
+      hasKeypoints: !!keypoints,
+      keypointsLength: keypoints?.length || 0
+    });
     
     if (ctx) {
       // Draw video frame
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      console.log("🖼️ Drew video frame");
       
       // Draw keypoints if provided
       if (keypoints && keypoints.length > 0) {
@@ -431,9 +458,12 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         console.log("⚠️ No keypoints provided for frame capture");
       }
       
-      return canvas.toDataURL('image/jpeg', 0.8);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      console.log("✅ Frame captured successfully, data URL length:", dataUrl.length);
+      return dataUrl;
     }
     
+    console.log("❌ Failed to get canvas context");
     return '';
   };
 
