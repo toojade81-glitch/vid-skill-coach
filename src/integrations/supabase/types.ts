@@ -14,7 +14,189 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      attempts: {
+        Row: {
+          age: number | null
+          ai_feedback: string | null
+          attempt_id: string
+          auto_metrics: Json | null
+          delete_video_after_feedback: boolean | null
+          notes: string | null
+          overall_score: number | null
+          quick_tags: string[] | null
+          ratings: Json | null
+          session_id: string
+          skill_id: string
+          student_id: string
+          timestamp: string
+          video_url: string | null
+        }
+        Insert: {
+          age?: number | null
+          ai_feedback?: string | null
+          attempt_id?: string
+          auto_metrics?: Json | null
+          delete_video_after_feedback?: boolean | null
+          notes?: string | null
+          overall_score?: number | null
+          quick_tags?: string[] | null
+          ratings?: Json | null
+          session_id: string
+          skill_id: string
+          student_id: string
+          timestamp?: string
+          video_url?: string | null
+        }
+        Update: {
+          age?: number | null
+          ai_feedback?: string | null
+          attempt_id?: string
+          auto_metrics?: Json | null
+          delete_video_after_feedback?: boolean | null
+          notes?: string | null
+          overall_score?: number | null
+          quick_tags?: string[] | null
+          ratings?: Json | null
+          session_id?: string
+          skill_id?: string
+          student_id?: string
+          timestamp?: string
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attempts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["session_id"]
+          },
+          {
+            foreignKeyName: "attempts_skill_id_fkey"
+            columns: ["skill_id"]
+            isOneToOne: false
+            referencedRelation: "skills"
+            referencedColumns: ["skill_id"]
+          },
+          {
+            foreignKeyName: "attempts_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["student_id"]
+          },
+        ]
+      }
+      rubrics: {
+        Row: {
+          created_at: string
+          criteria: string[]
+          descriptors: Json | null
+          rubric_id: string
+          scale_max: number
+          scale_min: number
+          skill_id: string
+        }
+        Insert: {
+          created_at?: string
+          criteria: string[]
+          descriptors?: Json | null
+          rubric_id?: string
+          scale_max?: number
+          scale_min?: number
+          skill_id: string
+        }
+        Update: {
+          created_at?: string
+          criteria?: string[]
+          descriptors?: Json | null
+          rubric_id?: string
+          scale_max?: number
+          scale_min?: number
+          skill_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rubrics_skill_id_fkey"
+            columns: ["skill_id"]
+            isOneToOne: false
+            referencedRelation: "skills"
+            referencedColumns: ["skill_id"]
+          },
+        ]
+      }
+      sessions: {
+        Row: {
+          class: string
+          created_at: string
+          date: string
+          session_id: string
+        }
+        Insert: {
+          class: string
+          created_at?: string
+          date: string
+          session_id?: string
+        }
+        Update: {
+          class?: string
+          created_at?: string
+          date?: string
+          session_id?: string
+        }
+        Relationships: []
+      }
+      skills: {
+        Row: {
+          created_at: string
+          cues: string[] | null
+          name: string
+          skill_id: string
+          success_criteria: string[] | null
+        }
+        Insert: {
+          created_at?: string
+          cues?: string[] | null
+          name: string
+          skill_id?: string
+          success_criteria?: string[] | null
+        }
+        Update: {
+          created_at?: string
+          cues?: string[] | null
+          name?: string
+          skill_id?: string
+          success_criteria?: string[] | null
+        }
+        Relationships: []
+      }
+      students: {
+        Row: {
+          class: string
+          created_at: string
+          dob: string
+          name: string
+          sex: string | null
+          student_id: string
+        }
+        Insert: {
+          class: string
+          created_at?: string
+          dob: string
+          name: string
+          sex?: string | null
+          student_id?: string
+        }
+        Update: {
+          class?: string
+          created_at?: string
+          dob?: string
+          name?: string
+          sex?: string | null
+          student_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
