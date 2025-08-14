@@ -5,17 +5,53 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Copy, Check } from "lucide-react";
 import { toast } from "sonner";
-import VideoSlider from "./VideoSlider";
 
 interface ScoreAdjustmentProps {
-  skill: string;
+  skill: "Setting" | "Digging";
   autoScores: Record<string, number>;
   onScoreChange: (scores: Record<string, number>) => void;
   rubricFrames?: Record<string, string>;
-  videoFile?: File;
 }
 
 const SKILL_CRITERIA = {
+  Setting: {
+    readyFootwork: {
+      name: "Ready Position & Footwork",
+      descriptions: {
+        0: "No ready stance; feet stationary; poor positioning under ball.",
+        1: "Ready stance inconsistent; slow or incomplete movement to get under ball.",
+        2: "Consistent low stance; some movement to adjust, minor positioning errors.",
+        3: "Consistently low, balanced stance; quick, small steps to get perfectly under ball."
+      }
+    },
+    handShapeContact: {
+      name: "Hand Shape & Contact Zone",
+      descriptions: {
+        0: "Hands apart or flat; contact well below chin/neck.",
+        1: "Hands form partial shape; contact at chin/neck level.",
+        2: "Triangle/window formed; contact just above forehead but slightly low.",
+        3: "Perfect triangle/window; contact above forehead in correct \"setting zone.\""
+      }
+    },
+    alignmentExtension: {
+      name: "Body Alignment & Extension", 
+      descriptions: {
+        0: "Shoulders/hips misaligned to target; no upward extension.",
+        1: "Minor alignment; limited knee/hip/arm extension.",
+        2: "Mostly square to target; good upward extension but minor sequencing errors.",
+        3: "Fully square to target; smooth knees→hips→arms extension in correct order."
+      }
+    },
+    followThroughControl: {
+      name: "Follow-Through & Ball Control",
+      descriptions: {
+        0: "Arms/wrists drop immediately; ball control inconsistent.",
+        1: "Short or abrupt follow-through; ball occasionally off target.",
+        2: "Controlled follow-through to target; ball mostly accurate.",
+        3: "Smooth follow-through to target; consistent arc, height, and accuracy."
+      }
+    }
+  },
   Digging: {
     readyPlatform: {
       name: "Ready Position & Platform",
@@ -35,6 +71,15 @@ const SKILL_CRITERIA = {
         3: "Contact on mid-forearms below waist; precise platform angle to target."
       }
     },
+    legDriveShoulder: {
+      name: "Leg Drive & Shoulder Lift",
+      descriptions: {
+        0: "No upward drive; swing arms instead of using legs.",
+        1: "Minimal leg extension; uneven shoulder motion.",
+        2: "Legs provide most power; subtle shoulder lift assists control.",
+        3: "Smooth, powerful leg drive with coordinated shoulder lift for perfect control."
+      }
+    },
     followThroughControl: {
       name: "Follow-Through & Control",
       descriptions: {
@@ -47,16 +92,11 @@ const SKILL_CRITERIA = {
   }
 };
 
-const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, videoFile }: ScoreAdjustmentProps) => {
+const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {} }: ScoreAdjustmentProps) => {
   const [scores, setScores] = useState<Record<string, number>>(autoScores);
   const [copied, setCopied] = useState(false);
-  const [manualFrames, setManualFrames] = useState<Record<string, string>>(rubricFrames);
 
-  const criteria = SKILL_CRITERIA[skill as keyof typeof SKILL_CRITERIA];
-  
-  if (!criteria) {
-    return <div>Skill "{skill}" not supported yet.</div>;
-  }
+  const criteria = SKILL_CRITERIA[skill];
 
   useEffect(() => {
     setScores(autoScores);
@@ -69,10 +109,6 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, 
   const handleScoreChange = (criterion: string, value: number[]) => {
     const newScores = { ...scores, [criterion]: value[0] };
     setScores(newScores);
-  };
-
-  const handleFrameCapture = (componentKey: string, dataUrl: string) => {
-    setManualFrames(prev => ({ ...prev, [componentKey]: dataUrl }));
   };
 
   const copyToClipboard = async () => {
@@ -114,63 +150,28 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, 
 
   return (
     <div className="space-y-6">
-      {/* Show AI captured frames from MoveNet first */}
       {Object.keys(rubricFrames).length > 0 && (
         <Card className="p-4">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">AI Captured Assessment Frames</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              These frames were automatically captured by AI during movement analysis
-            </p>
+            <CardTitle className="text-base">AI Captured Reference Frames</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {Object.entries(criteria).map(([componentKey, criterion]) => (
-                <div key={componentKey} className="space-y-2">
-                  <div className="text-sm font-medium">{criterion.name}</div>
-                  {rubricFrames[componentKey] ? (
-                    <div className="relative">
-                      <img 
-                        src={rubricFrames[componentKey]} 
-                        alt={`${criterion.name} AI frame`} 
-                        className="w-full h-32 object-cover rounded-lg border border-border"
-                      />
-                      <div className="absolute bottom-1 left-1 bg-black/70 text-white px-2 py-1 rounded text-xs">
-                        AI Captured
-                      </div>
+            <div className="grid grid-cols-2 gap-4">
+              {Object.entries(rubricFrames).map(([componentKey, frameData]) => {
+                const componentName = criteria[componentKey as keyof typeof criteria]?.name || componentKey;
+                return (
+                  <div key={componentKey} className="relative">
+                    <img 
+                      src={frameData} 
+                      alt={`${componentName} reference frame`} 
+                      className="w-full h-32 object-cover rounded-lg border border-border"
+                    />
+                    <div className="absolute bottom-1 left-1 bg-black/70 text-white px-2 py-1 rounded text-xs">
+                      {componentName}
                     </div>
-                  ) : (
-                    <div className="w-full h-32 bg-muted rounded-lg border border-dashed border-border flex items-center justify-center">
-                      <span className="text-xs text-muted-foreground">No frame captured</span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Video scrubbers for manual frame selection below AI frames */}
-      {videoFile && (
-        <Card className="p-4">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Manual Frame Selection</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Scrub through the video to find and capture the best frames for each component assessment
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-6">
-              {Object.entries(criteria).map(([componentKey, criterion]) => (
-                <VideoSlider
-                  key={componentKey}
-                  videoFile={videoFile}
-                  componentName={criterion.name}
-                  onFrameCapture={(dataUrl) => handleFrameCapture(componentKey, dataUrl)}
-                  initialCapturedFrame={manualFrames[componentKey]}
-                />
-              ))}
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -233,18 +234,18 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, 
               </div>
             </div>
             
-            {/* Show manually captured frame for this component if available */}
-            {manualFrames[key] && (
+            {/* Show specific reference frame for this component if available */}
+            {rubricFrames[key] && (
               <div className="mb-4">
-                <div className="text-xs font-medium text-muted-foreground mb-2">Captured Assessment Frame:</div>
+                <div className="text-xs font-medium text-muted-foreground mb-2">Reference Frame:</div>
                 <div className="relative">
                   <img 
-                    src={manualFrames[key]} 
-                    alt={`${criterion.name} assessment frame`} 
+                    src={rubricFrames[key]} 
+                    alt={`${criterion.name} reference`} 
                     className="w-full h-24 object-cover rounded border border-border"
                   />
                   <div className="absolute bottom-1 left-1 bg-black/70 text-white px-1 py-0.5 rounded text-xs">
-                    Manual capture
+                    AI captured
                   </div>
                 </div>
               </div>

@@ -18,14 +18,18 @@ interface PoseMetrics {
 }
 
 interface RubricFrames {
+  readyFootwork?: string;
+  handShapeContact?: string;
+  alignmentExtension?: string;
+  followThroughControl?: string;
   readyPlatform?: string;
   contactAngle?: string;
-  followThroughControl?: string;
+  legDriveShoulder?: string;
 }
 
 interface RealMoveNetAnalyzerProps {
   videoFile: File | null;
-  skill: "Digging";
+  skill: "Setting" | "Digging";
   onAnalysisComplete: (metrics: PoseMetrics, scores: Record<string, number>, confidence: number, rubricFrames: RubricFrames) => void;
 }
 
@@ -121,38 +125,48 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       y: (leftHip.y + rightHip.y) / 2
     };
     
-    // Detect volleyball-specific poses for Digging based on rubric descriptors
-    if (skill === 'Digging') {
-      // Ready Platform: Low stance, arms down, platform formation (early phase)
-      if (timePercent < 0.4 && leftWrist && rightWrist && leftKnee && rightKnee) {
-        const kneeBend = leftKnee.y < leftHip.y && rightKnee.y < rightHip.y; // Knees bent
-        const armsDown = leftWrist.y > shoulderCenter.y && rightWrist.y > shoulderCenter.y;
-        const armLevel = Math.abs(leftWrist.y - rightWrist.y) < 30; // Platform level
-        
-        if (kneeBend && armsDown && armLevel) {
-          return 'readyPlatform';
+    // Detect volleyball-specific poses
+    if (skill === 'Setting') {
+      // Ready position: early in video, stable stance
+      if (timePercent < 0.3) {
+        return 'readyFootwork';
+      }
+      
+      // Hand shape/contact: hands above shoulders
+      if (leftWrist && rightWrist && leftWrist.y < shoulderCenter.y && rightWrist.y < shoulderCenter.y) {
+        return 'handShapeContact';
+      }
+      
+      // Extension: peak arm extension moment
+      if (leftElbow && rightElbow && leftWrist && rightWrist) {
+        const armExtension = Math.abs(leftWrist.y - leftElbow.y) + Math.abs(rightWrist.y - rightElbow.y);
+        if (armExtension > 100 && timePercent > 0.3 && timePercent < 0.7) {
+          return 'alignmentExtension';
         }
       }
       
-      // Contact Angle: Mid-forearm contact, platform angle control (middle phase)
-      if (timePercent >= 0.3 && timePercent <= 0.7 && leftWrist && rightWrist && leftElbow && rightElbow) {
-        const armLevel = Math.abs(leftWrist.y - rightWrist.y) < 25; // Level platform
-        const forearmPosition = leftWrist.y > leftElbow.y && rightWrist.y > rightElbow.y; // Wrists below elbows
-        const properHeight = leftWrist.y < hipCenter.y; // Contact below waist
-        
-        if (armLevel && forearmPosition && properHeight) {
+      // Follow-through: later in video
+      if (timePercent > 0.65) {
+        return 'followThroughControl';
+      }
+      
+    } else if (skill === 'Digging') {
+      // Ready platform: early position, arms down
+      if (timePercent < 0.3 && leftWrist && rightWrist && leftWrist.y > shoulderCenter.y) {
+        return 'readyPlatform';
+      }
+      
+      // Contact angle: arms in platform position
+      if (leftWrist && rightWrist && leftElbow && rightElbow) {
+        const armAngle = Math.abs(leftWrist.y - rightWrist.y);
+        if (armAngle < 50 && leftWrist.y > shoulderCenter.y) {
           return 'contactAngle';
         }
       }
       
-      // Follow-Through Control: Platform maintained after contact (late phase)
-      if (timePercent > 0.6 && leftWrist && rightWrist) {
-        const platformMaintained = Math.abs(leftWrist.y - rightWrist.y) < 30;
-        const controlledPosition = leftWrist.y > shoulderCenter.y && rightWrist.y > shoulderCenter.y;
-        
-        if (platformMaintained && controlledPosition) {
-          return 'followThroughControl';
-        }
+      // Leg drive/shoulder: knees bent, active stance
+      if (leftKnee && rightKnee && leftKnee.y < hipCenter.y - 20) {
+        return 'legDriveShoulder';
       }
     }
     
@@ -184,47 +198,78 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
     
     let score = 1; // Start with base score
     
-    if (skill === 'Digging') {
+    if (skill === 'Setting') {
+      if (poseType === 'readyFootwork') {
+        // Check stance width and knee bend
+        const stanceWidth = Math.abs((leftAnkle?.x || 0) - (rightAnkle?.x || 0));
+        const avgKneeHeight = ((leftKnee?.y || 0) + (rightKnee?.y || 0)) / 2;
+        const avgHipHeight = ((leftHip.y + rightHip.y) / 2);
+        const kneeBend = avgHipHeight - avgKneeHeight;
+        
+        if (stanceWidth > 60 && kneeBend > 40) score += 1; // Good stance
+        if (kneeBend > 70 && stanceWidth > 80) score += 1; // Excellent knee bend and stance
+      }
+      
+      else if (poseType === 'handShapeContact') {
+        // Check hand position and triangle formation
+        const handsAboveShoulders = leftWrist && rightWrist && 
+          leftWrist.y < leftShoulder.y && rightWrist.y < rightShoulder.y;
+        const handDistance = leftWrist && rightWrist ? 
+          Math.abs(leftWrist.x - rightWrist.x) : 0;
+        
+        if (handsAboveShoulders && handDistance > 30) score += 1; // Must have hands up AND proper width
+        if (handDistance > 40 && handDistance < 70) score += 1; // Stricter triangle width
+      }
+      
+      else if (poseType === 'alignmentExtension') {
+        // Check body alignment and extension
+        const shoulderLevel = Math.abs(leftShoulder.y - rightShoulder.y);
+        const hipLevel = Math.abs(leftHip.y - rightHip.y);
+        const bodyUpright = Math.abs((leftShoulder.x + rightShoulder.x) / 2 - (leftHip.x + rightHip.x) / 2);
+        
+        if (shoulderLevel < 15 && hipLevel < 15 && bodyUpright < 25) score += 1; // Stricter alignment
+        if (shoulderLevel < 10 && hipLevel < 10 && bodyUpright < 15) score += 1; // Excellent alignment
+      }
+      
+      else if (poseType === 'followThroughControl') {
+        // Check follow-through position
+        const wristExtension = leftWrist && rightWrist && leftElbow && rightElbow ?
+          (Math.abs(leftWrist.y - leftElbow.y) + Math.abs(rightWrist.y - rightElbow.y)) / 2 : 0;
+        
+        if (wristExtension > 80) score += 1; // Good extension (stricter)
+        if (wristExtension > 110) score += 1; // Excellent extension
+      }
+    }
+    
+    else if (skill === 'Digging') {
       if (poseType === 'readyPlatform') {
-        // Rubric: Low, balanced stance; elbows locked; flat platform
+        // Check platform formation and stance
         const armLevel = leftWrist && rightWrist ? 
           Math.abs(leftWrist.y - rightWrist.y) : 100;
         const armsBelow = leftWrist && rightWrist && 
           leftWrist.y > leftShoulder.y && rightWrist.y > rightShoulder.y;
-        const kneeBend = leftKnee && rightKnee && leftHip && rightHip &&
-          (leftKnee.y > leftHip.y) && (rightKnee.y > rightHip.y); // Knees below hips = bent
         
-        if (armsBelow && armLevel < 30) score += 1; // Platform formed
-        if (armLevel < 15 && kneeBend) score += 1; // Level platform with stance
-        if (kneeBend && armLevel < 10) score += 1; // Perfect: low stance + very flat platform
+        if (armsBelow && armLevel < 25) score += 1; // Must have proper platform formation
+        if (armLevel < 15) score += 1; // Very level platform
       }
       
       else if (poseType === 'contactAngle') {
-        // Rubric: Mid-forearms contact below waist; precise platform angle
-        const elbowLock = leftElbow && rightElbow && leftWrist && rightWrist &&
-          Math.abs(leftWrist.x - leftElbow.x) > 50 && Math.abs(rightWrist.x - rightElbow.x) > 50;
-        const contactHeight = leftWrist && leftHip && rightWrist && rightHip &&
-          leftWrist.y < leftHip.y && rightWrist.y < rightHip.y; // Below waist
-        const platformAngle = leftWrist && rightWrist &&
-          Math.abs(leftWrist.y - rightWrist.y) < 20; // Precise angle
+        // Check platform angle and position
+        const elbowExtension = leftElbow && rightElbow && leftWrist && rightWrist ?
+          (Math.abs(leftWrist.x - leftElbow.x) + Math.abs(rightWrist.x - rightElbow.x)) / 2 : 0;
         
-        if (elbowLock) score += 1; // Elbows locked
-        if (contactHeight && platformAngle) score += 1; // Proper contact point and angle
-        if (elbowLock && contactHeight && platformAngle) score += 1; // Perfect execution
+        if (elbowExtension > 60) score += 1; // Extended arms (stricter)
+        if (elbowExtension > 90) score += 1; // Fully extended
       }
       
-      else if (poseType === 'followThroughControl') {
-        // Rubric: Platform held steady after contact; consistent accuracy
-        const platformStable = leftWrist && rightWrist &&
-          Math.abs(leftWrist.y - rightWrist.y) < 25; // Platform maintained
-        const controlledHeight = leftWrist && leftShoulder && rightWrist && rightShoulder &&
-          leftWrist.y > leftShoulder.y && rightWrist.y > rightShoulder.y; // Arms still down
-        const elbowControl = leftElbow && rightElbow && leftWrist && rightWrist &&
-          Math.abs(leftWrist.x - leftElbow.x) > 40 && Math.abs(rightWrist.x - rightElbow.x) > 40;
+      else if (poseType === 'legDriveShoulder') {
+        // Check leg drive and shoulder position
+        const avgKneeHeight = ((leftKnee?.y || 0) + (rightKnee?.y || 0)) / 2;
+        const avgHipHeight = (leftHip.y + rightHip.y) / 2;
+        const kneeBend = avgHipHeight - avgKneeHeight;
         
-        if (platformStable) score += 1; // Platform maintained
-        if (controlledHeight && elbowControl) score += 1; // Good control
-        if (platformStable && controlledHeight && elbowControl) score += 1; // Perfect follow-through
+        if (kneeBend > 50) score += 1; // Good knee bend (stricter)
+        if (kneeBend > 80) score += 1; // Excellent drive position
       }
     }
     
@@ -293,93 +338,133 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
   };
 
   const drawKeypoints = (ctx: CanvasRenderingContext2D, keypoints: any[], width: number, height: number) => {
-    console.log("🎨 DEBUGGING: Starting keypoint drawing", {
+    console.log("🎨 Drawing keypoints on canvas:", {
       keypointsCount: keypoints.length,
       canvasSize: `${width}x${height}`,
-      contextType: ctx.constructor.name
+      sampleKeypoint: keypoints[0]
     });
     
-    // ALWAYS draw test elements to verify canvas works
+    // Test if canvas drawing works at all
     ctx.fillStyle = '#ff0000';
-    ctx.fillRect(0, 0, 100, 100);
-    ctx.fillStyle = '#00ff00';
-    ctx.fillRect(width - 100, 0, 100, 100);
-    ctx.strokeStyle = '#0000ff';
-    ctx.lineWidth = 10;
-    ctx.strokeRect(50, 50, width - 100, height - 100);
-    console.log("🟦 ALWAYS drew test rectangles");
+    ctx.fillRect(10, 10, 50, 50);
+    console.log("🟥 Drew test red square");
     
-    if (!keypoints || keypoints.length === 0) {
-      console.log("❌ No keypoints provided");
+    // Check keypoint format
+    const validKeypoints = keypoints.filter(kp => kp && typeof kp.x === 'number' && typeof kp.y === 'number' && kp.score > 0.3);
+    console.log("✅ Valid keypoints:", validKeypoints.length, "out of", keypoints.length);
+    
+    if (validKeypoints.length === 0) {
+      console.log("❌ No valid keypoints to draw");
       return;
     }
     
-    // Log first few keypoints to see format
-    console.log("📊 Sample keypoints:", keypoints.slice(0, 3));
+    // MoveNet keypoint connections for skeleton
+    const connections = [
+      // Face
+      [0, 1], [0, 2], [1, 3], [2, 4],
+      // Torso
+      [5, 6], [5, 11], [6, 12], [11, 12],
+      // Left arm
+      [5, 7], [7, 9],
+      // Right arm  
+      [6, 8], [8, 10],
+      // Left leg
+      [11, 13], [13, 15],
+      // Right leg
+      [12, 14], [14, 16]
+    ];
+
+    // Draw connections first (skeleton)
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
     
-    // Draw large circles for all keypoints regardless of score
-    keypoints.forEach((keypoint, index) => {
-      if (keypoint && typeof keypoint.x === 'number' && typeof keypoint.y === 'number') {
-        const x = keypoint.x * width;
-        const y = keypoint.y * height;
+    let connectionsDrawn = 0;
+    connections.forEach(([startIdx, endIdx]) => {
+      const startPoint = keypoints[startIdx];
+      const endPoint = keypoints[endIdx];
+      
+      if (startPoint?.score > 0.3 && endPoint?.score > 0.3) {
+        const startX = startPoint.x * width;
+        const startY = startPoint.y * height;
+        const endX = endPoint.x * width;
+        const endY = endPoint.y * height;
         
-        // Draw large, obvious circles
-        ctx.fillStyle = index % 2 === 0 ? '#ff0000' : '#00ff00';
-        ctx.beginPath();
-        ctx.arc(x, y, 20, 0, 2 * Math.PI);
-        ctx.fill();
+        console.log(`🔗 Drawing connection ${startIdx}-${endIdx}: (${startX.toFixed(1)}, ${startY.toFixed(1)}) -> (${endX.toFixed(1)}, ${endY.toFixed(1)})`);
         
-        // Draw white border
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 4;
-        ctx.stroke();
-        
-        console.log(`🎯 Drew keypoint ${index} at (${x.toFixed(1)}, ${y.toFixed(1)}) score: ${keypoint.score || 'no score'}`);
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        connectionsDrawn++;
       }
     });
     
-    console.log("✅ Finished drawing keypoints");
+    ctx.stroke();
+    console.log("🔗 Drew", connectionsDrawn, "skeleton connections");
+
+    // Draw keypoints (joints)
+    let keypointsDrawn = 0;
+    keypoints.forEach((keypoint, index) => {
+      if (keypoint.score > 0.3) {
+        const x = keypoint.x * width;
+        const y = keypoint.y * height;
+        
+        console.log(`🎯 Drawing keypoint ${index}: (${x.toFixed(1)}, ${y.toFixed(1)}) score: ${keypoint.score.toFixed(2)}`);
+        
+        // Different colors for different body parts
+        if (index <= 4) ctx.fillStyle = '#ff0000'; // Head
+        else if (index <= 6) ctx.fillStyle = '#00ff00'; // Shoulders
+        else if (index <= 10) ctx.fillStyle = '#0000ff'; // Arms
+        else if (index <= 12) ctx.fillStyle = '#ffff00'; // Torso
+        else ctx.fillStyle = '#ff00ff'; // Legs
+        
+        ctx.beginPath();
+        ctx.arc(x, y, 8, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // Add white border
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        keypointsDrawn++;
+      }
+    });
+    
+    console.log("🎯 Drew", keypointsDrawn, "keypoints total");
   };
 
   const captureVideoFrame = (video: HTMLVideoElement, keypoints?: any[]): string => {
-    console.log("📸 CAPTURE STARTING", {
-      videoSize: `${video.videoWidth}x${video.videoHeight}`,
-      hasKeypoints: !!keypoints,
-      keypointsCount: keypoints?.length || 0
-    });
-    
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    
-    if (!ctx) {
-      console.log("❌ Failed to get canvas context");
-      return '';
-    }
     
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     
-    // Draw video frame
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    console.log("🖼️ Drew video frame");
+    console.log("📸 Capturing frame:", {
+      canvasSize: `${canvas.width}x${canvas.height}`,
+      hasKeypoints: !!keypoints,
+      keypointsLength: keypoints?.length || 0
+    });
     
-    // ALWAYS draw keypoints if provided
-    if (keypoints && keypoints.length > 0) {
-      console.log("🎨 Drawing keypoints overlay...");
-      drawKeypoints(ctx, keypoints, canvas.width, canvas.height);
-    } else {
-      console.log("⚠️ No keypoints to draw");
-      // Draw test pattern anyway to verify canvas works
-      ctx.fillStyle = '#ff0000';
-      ctx.fillRect(10, 10, 50, 50);
-      ctx.fillStyle = '#00ff00';
-      ctx.fillRect(canvas.width - 60, 10, 50, 50);
+    if (ctx) {
+      // Draw video frame
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      console.log("🖼️ Drew video frame");
+      
+      // Draw keypoints if provided
+      if (keypoints && keypoints.length > 0) {
+        console.log("🎨 Adding keypoints overlay to captured frame");
+        drawKeypoints(ctx, keypoints, canvas.width, canvas.height);
+      } else {
+        console.log("⚠️ No keypoints provided for frame capture");
+      }
+      
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      console.log("✅ Frame captured successfully, data URL length:", dataUrl.length);
+      return dataUrl;
     }
     
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-    console.log("✅ Captured frame, dataURL length:", dataUrl.length);
-    
-    return dataUrl;
+    console.log("❌ Failed to get canvas context");
+    return '';
   };
 
   const analyzeVideo = async () => {
@@ -411,7 +496,9 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       const rubricFrames: RubricFrames = {};
       
       // Track which rubric components we've captured
-      const neededComponents = ['readyPlatform', 'contactAngle', 'followThroughControl'];
+      const neededComponents = skill === 'Setting' 
+        ? ['readyFootwork', 'handShapeContact', 'alignmentExtension', 'followThroughControl']
+        : ['readyPlatform', 'contactAngle', 'legDriveShoulder', 'followThroughControl'];
 
       console.log(`🎬 Analyzing ${duration.toFixed(1)}s video with ${Math.ceil(duration / frameStep)} frames`);
 
@@ -533,7 +620,9 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       });
       
       // Ensure all components have scores (fallback to basic detection rate)
-      const allComponents = ['readyPlatform', 'contactAngle', 'followThroughControl'];
+      const allComponents = skill === 'Setting' 
+        ? ['readyFootwork', 'handShapeContact', 'alignmentExtension', 'followThroughControl']
+        : ['readyPlatform', 'contactAngle', 'legDriveShoulder', 'followThroughControl'];
       
       // Calculate realistic confidence based on movement and volleyball actions
       const avgMovement = totalMovement / Math.max(1, detectedFrames);
@@ -583,9 +672,13 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       // Generate pose metrics (keeping existing structure)
       const baseScore = Math.floor(confidence * 3); // 0-3 scale
       const scores = {
-        readyPlatform: finalScores.readyPlatform || Math.min(3, baseScore + 1),
-        contactAngle: finalScores.contactAngle || baseScore,
-        followThroughControl: finalScores.followThroughControl || baseScore
+        readyFootwork: finalScores.readyFootwork || baseScore,
+        handShapeContact: finalScores.handShapeContact || (skill === 'Setting' ? Math.min(3, baseScore + 1) : baseScore),
+        alignmentExtension: finalScores.alignmentExtension || baseScore,
+        followThroughControl: finalScores.followThroughControl || baseScore,
+        readyPlatform: finalScores.readyPlatform || (skill === 'Digging' ? Math.min(3, baseScore + 1) : baseScore),
+        contactAngle: finalScores.contactAngle || (skill === 'Digging' ? baseScore : 0),
+        legDriveShoulder: finalScores.legDriveShoulder || (skill === 'Digging' ? baseScore : 0)
       };
 
       // Generate pose metrics
@@ -594,9 +687,9 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         detected_frames: detectedFrames,
         kneeFlex: 20 + Math.random() * 15,
         elbowLock: confidence > 0.7,
-        wristAboveForehead: false,
-        contactHeightRelTorso: 0.4 + Math.random() * 0.2,
-        platformFlatness: 5 + Math.random() * 20,
+        wristAboveForehead: skill === "Setting" && confidence > 0.6,
+        contactHeightRelTorso: skill === "Setting" ? 0.85 + Math.random() * 0.1 : 0.4 + Math.random() * 0.2,
+        platformFlatness: skill === "Digging" ? 5 + Math.random() * 20 : 0,
         extensionSequence: confidence,
         facingTarget: 0.8 + Math.random() * 0.2,
         stability: confidence,

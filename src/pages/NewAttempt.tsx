@@ -9,12 +9,11 @@ import { ArrowLeft, Upload, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import RealMoveNetAnalyzer from "@/components/RealMoveNetAnalyzer";
 import ScoreAdjustment from "@/components/ScoreAdjustment";
-import { getSkillOptions } from '@/data/referenceVideos';
 
 const NewAttempt = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    skill: "Digging" as const,
+    skill: "Setting" as "Setting" | "Digging",
     notes: ""
   });
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -26,7 +25,6 @@ const NewAttempt = () => {
   const [rubricFrames, setRubricFrames] = useState<Record<string, string>>({});
   const [capturedFrame, setCapturedFrame] = useState<string>("");
   const [copied, setCopied] = useState(false);
-  const [analysisResults, setAnalysisResults] = useState<any>(null);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -45,15 +43,25 @@ const NewAttempt = () => {
     }
   };
 
-  const handleAnalysisComplete = (results: any) => {
-    console.log("📊 Analysis complete with results:", results);
+  const handleAnalysisComplete = (
+    analysisMetrics: any,
+    scores: Record<string, number>,
+    conf: number,
+    frames: Record<string, string>
+  ) => {
+    console.log("📊 Analysis complete with results:", { scores, analysisMetrics, conf, frames });
     
-    setAnalysisResults(results);
-    setMetrics(results.metrics);
-    setAutoScores(results.scores);
-    setFinalScores(results.scores);
-    setConfidence(results.metrics?.confidence || 0.8);
-    setRubricFrames(results.rubricFrames || {});
+    setMetrics(analysisMetrics);
+    setAutoScores(scores);
+    setFinalScores(scores);
+    setConfidence(conf);
+    setRubricFrames(frames);
+    
+    // Set the first available frame as the main captured frame for backward compatibility
+    const firstFrame = Object.values(frames)[0];
+    if (firstFrame) {
+      setCapturedFrame(firstFrame);
+    }
     
     setStep("review");
   };
@@ -65,39 +73,21 @@ const NewAttempt = () => {
   const copyToClipboard = async () => {
     try {
       const SKILL_CRITERIA = {
-        Serve: {
-          technique: { name: "Serving Technique", descriptions: { 0: "Poor ball toss; inconsistent contact point; minimal follow-through.", 1: "Inconsistent toss; contact point varies; limited follow-through.", 2: "Good toss placement; consistent contact; adequate follow-through.", 3: "Perfect toss; optimal contact point; smooth, controlled follow-through." }},
-          timing: { name: "Timing & Rhythm", descriptions: { 0: "No consistent rhythm; rushed or delayed movements.", 1: "Basic rhythm; some timing inconsistencies.", 2: "Good timing; minor rhythm variations.", 3: "Perfect timing; smooth, rhythmic motion throughout." }},
-          power: { name: "Power Generation", descriptions: { 0: "Minimal body rotation; arm-only motion; low ball speed.", 1: "Limited body involvement; inconsistent power.", 2: "Good body rotation; consistent power generation.", 3: "Full body coordination; maximum power with control." }},
-          accuracy: { name: "Accuracy & Control", descriptions: { 0: "Serves frequently out of bounds or into net.", 1: "Basic accuracy; occasional successful serves.", 2: "Good accuracy; most serves in target area.", 3: "Excellent accuracy; consistent placement and control." }}
+        Setting: {
+          readyFootwork: { name: "Ready Position & Footwork", descriptions: { 0: "No ready stance; feet stationary; poor positioning under ball.", 1: "Ready stance inconsistent; slow or incomplete movement to get under ball.", 2: "Consistent low stance; some movement to adjust, minor positioning errors.", 3: "Consistently low, balanced stance; quick, small steps to get perfectly under ball." }},
+          handShapeContact: { name: "Hand Shape & Contact Zone", descriptions: { 0: "Hands apart or flat; contact well below chin/neck.", 1: "Hands form partial shape; contact at chin/neck level.", 2: "Triangle/window formed; contact just above forehead but slightly low.", 3: "Perfect triangle/window; contact above forehead in correct setting zone." }},
+          alignmentExtension: { name: "Body Alignment & Extension", descriptions: { 0: "Shoulders/hips misaligned to target; no upward extension.", 1: "Minor alignment; limited knee/hip/arm extension.", 2: "Mostly square to target; good upward extension but minor sequencing errors.", 3: "Fully square to target; smooth knees→hips→arms extension in correct order." }},
+          followThroughControl: { name: "Follow-Through & Ball Control", descriptions: { 0: "Arms/wrists drop immediately; ball control inconsistent.", 1: "Short or abrupt follow-through; ball occasionally off target.", 2: "Controlled follow-through to target; ball mostly accurate.", 3: "Smooth follow-through to target; consistent arc, height, and accuracy." }}
         },
-        Spike: {
-          technique: { name: "Spiking Technique", descriptions: { 0: "Poor approach; incorrect arm swing; minimal jump.", 1: "Basic approach; inconsistent arm motion; limited elevation.", 2: "Good approach timing; proper arm swing; adequate jump.", 3: "Perfect approach; explosive jump; optimal arm swing and contact." }},
-          timing: { name: "Timing & Approach", descriptions: { 0: "Poor timing with set; rushed or late approach.", 1: "Basic timing; some coordination with setter.", 2: "Good timing; well-coordinated with set.", 3: "Perfect timing; seamless coordination with setter." }},
-          power: { name: "Power & Explosion", descriptions: { 0: "Weak attack; minimal downward angle.", 1: "Basic power; limited explosive movement.", 2: "Good power generation; consistent attack strength.", 3: "Maximum power; explosive jump and swing." }},
-          accuracy: { name: "Accuracy & Placement", descriptions: { 0: "Attacks frequently out or blocked.", 1: "Basic accuracy; occasional successful attacks.", 2: "Good placement; strategic shot selection.", 3: "Excellent accuracy; consistent court placement." }}
-        },
-        Block: {
-          technique: { name: "Blocking Technique", descriptions: { 0: "Poor hand position; minimal penetration over net.", 1: "Basic hand position; limited net penetration.", 2: "Good hand positioning; adequate penetration.", 3: "Perfect hand position; maximum penetration and coverage." }},
-          timing: { name: "Timing & Jump", descriptions: { 0: "Poor timing with attacker; early or late jump.", 1: "Basic timing; some coordination with attack.", 2: "Good timing; well-coordinated with attacker.", 3: "Perfect timing; synchronized with attack timing." }},
-          power: { name: "Jump & Elevation", descriptions: { 0: "Minimal jump height; poor takeoff.", 1: "Basic elevation; inconsistent takeoff.", 2: "Good jump height; consistent elevation.", 3: "Maximum elevation; explosive vertical jump." }},
-          accuracy: { name: "Positioning & Angle", descriptions: { 0: "Poor court position; hands angled incorrectly.", 1: "Basic positioning; limited hand control.", 2: "Good positioning; hands direct ball appropriately.", 3: "Perfect positioning; optimal hand angle for defense." }}
-        },
-        Pass: {
-          technique: { name: "Passing Technique", descriptions: { 0: "Poor platform; inconsistent arm position.", 1: "Basic platform formation; some consistency.", 2: "Good platform; consistent arm positioning.", 3: "Perfect platform; optimal arm angle and control." }},
-          timing: { name: "Timing & Movement", descriptions: { 0: "Late to ball; poor movement to position.", 1: "Basic movement; some positioning issues.", 2: "Good movement; usually in correct position.", 3: "Excellent movement; always in optimal position." }},
-          power: { name: "Control & Touch", descriptions: { 0: "Inconsistent ball control; erratic passes.", 1: "Basic control; occasional accurate passes.", 2: "Good control; consistent pass quality.", 3: "Excellent touch; perfect pass placement." }},
-          accuracy: { name: "Pass Accuracy", descriptions: { 0: "Passes rarely reach target area.", 1: "Basic accuracy; occasionally on target.", 2: "Good accuracy; most passes to target.", 3: "Perfect accuracy; consistent setter placement." }}
-        },
-        Set: {
-          technique: { name: "Setting Technique", descriptions: { 0: "Poor hand position; inconsistent ball contact.", 1: "Basic hand shape; some contact consistency.", 2: "Good hand position; consistent ball control.", 3: "Perfect hand technique; optimal ball contact." }},
-          timing: { name: "Timing & Decision", descriptions: { 0: "Poor timing; limited court awareness.", 1: "Basic timing; simple set selection.", 2: "Good timing; appropriate set choices.", 3: "Perfect timing; strategic set distribution." }},
-          power: { name: "Set Height & Speed", descriptions: { 0: "Inconsistent set height; poor ball speed control.", 1: "Basic set control; limited height variation.", 2: "Good set variety; appropriate height and speed.", 3: "Perfect set control; optimal height and timing." }},
-          accuracy: { name: "Set Accuracy", descriptions: { 0: "Sets rarely reach intended target.", 1: "Basic accuracy; occasional good sets.", 2: "Good accuracy; consistent target placement.", 3: "Perfect accuracy; precise hitter placement." }}
+        Digging: {
+          readyPlatform: { name: "Ready Position & Platform", descriptions: { 0: "Upright stance; bent arms; no platform formed.", 1: "Some knee flexion; arms bent or platform uneven.", 2: "Low, balanced stance; elbows mostly locked; fairly flat platform.", 3: "Low, stable stance; elbows locked; perfectly flat, steady platform." }},
+          contactAngle: { name: "Contact Point & Angle", descriptions: { 0: "Contact at wrists or hands; ball angle uncontrolled.", 1: "Contact on lower forearms but angle inconsistent.", 2: "Contact on mid-forearms; platform angle mostly directs ball upward/forward.", 3: "Contact on mid-forearms below waist; precise platform angle to target." }},
+          legDriveShoulder: { name: "Leg Drive & Shoulder Lift", descriptions: { 0: "No upward drive; swing arms instead of using legs.", 1: "Minimal leg extension; uneven shoulder motion.", 2: "Legs provide most power; subtle shoulder lift assists control.", 3: "Smooth, powerful leg drive with coordinated shoulder lift for perfect control." }},
+          followThroughControl: { name: "Follow-Through & Control", descriptions: { 0: "Arms/platform collapse immediately after contact; ball uncontrolled.", 1: "Platform drops quickly; ball sometimes accurate.", 2: "Platform maintained briefly; ball mostly on target.", 3: "Platform held steady after contact; ball consistently accurate to target." }}
         }
       };
 
-      const criteria = SKILL_CRITERIA[formData.skill as keyof typeof SKILL_CRITERIA] || SKILL_CRITERIA.Serve;
+      const criteria = SKILL_CRITERIA[formData.skill as keyof typeof SKILL_CRITERIA];
       const totalScore = Object.values(finalScores).reduce((sum, score) => sum + score, 0);
       const maxScore = Object.keys(finalScores).length * 3;
       
@@ -197,11 +187,24 @@ const NewAttempt = () => {
               <CardTitle>Assessment Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="text-center p-4 bg-primary/5 rounded-lg">
-                <h3 className="text-lg font-semibold text-primary mb-2">Digging Assessment</h3>
-                <p className="text-sm text-muted-foreground">
-                  Comprehensive AI-assisted evaluation of volleyball digging technique
-                </p>
+              <div>
+                <Label>Skill</Label>
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    variant={formData.skill === "Setting" ? "default" : "outline"}
+                    onClick={() => setFormData(prev => ({ ...prev, skill: "Setting" }))}
+                    className="flex-1"
+                  >
+                    Setting
+                  </Button>
+                  <Button
+                    variant={formData.skill === "Digging" ? "default" : "outline"}
+                    onClick={() => setFormData(prev => ({ ...prev, skill: "Digging" }))}
+                    className="flex-1"
+                  >
+                    Digging
+                  </Button>
+                </div>
               </div>
 
 
@@ -227,7 +230,6 @@ const NewAttempt = () => {
             </CardContent>
           </Card>
         )}
-
 
         {step === "analyze" && (
           <Card className="shadow-lg">
@@ -295,25 +297,11 @@ const NewAttempt = () => {
               </div>
 
               {videoFile && (
-                <div className="space-y-4">
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <h4 className="font-medium text-blue-900 mb-2">🎯 AI Movement Analysis</h4>
-                    <p className="text-sm text-blue-800">
-                      Your video will be analyzed using AI pose detection to provide 
-                      scoring based on volleyball technique and movement quality.
-                    </p>
-                  </div>
-                  
-                  <RealMoveNetAnalyzer
-                    videoFile={videoFile}
-                    skill="Digging"
-                    onAnalysisComplete={(metrics, scores, confidence, frames) => {
-                      handleAnalysisComplete({
-                        metrics, scores, confidence, rubricFrames: frames
-                      });
-                    }}
-                  />
-                </div>
+                <RealMoveNetAnalyzer
+                  videoFile={videoFile}
+                  skill={formData.skill}
+                  onAnalysisComplete={handleAnalysisComplete}
+                />
               )}
             </CardContent>
           </Card>
@@ -350,35 +338,12 @@ const NewAttempt = () => {
                 </p>
               </CardHeader>
               <CardContent>
-            <ScoreAdjustment
-              skill={formData.skill}
-              autoScores={autoScores}
-              onScoreChange={handleScoreAdjustment}
-              rubricFrames={rubricFrames}
-              videoFile={videoFile}
-            />
-                
-                {analysisResults?.comparison && (
-                  <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <h4 className="font-medium text-blue-900 mb-3">🎯 Reference Comparison Results</h4>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="font-medium">Overall Similarity:</span>
-                        <div className="text-xl font-bold text-blue-600">
-                          {Math.round(analysisResults.comparison.overallSimilarity * 100)}%
-                        </div>
-                      </div>
-                      <div>
-                        <span className="font-medium">Phase Breakdown:</span>
-                        <div className="space-y-1 text-xs">
-                          <div>Prep: {Math.round(analysisResults.comparison.phaseScores.preparation * 100)}%</div>
-                          <div>Exec: {Math.round(analysisResults.comparison.phaseScores.execution * 100)}%</div>
-                          <div>Follow: {Math.round(analysisResults.comparison.phaseScores.followThrough * 100)}%</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                <ScoreAdjustment
+                  skill={formData.skill}
+                  autoScores={autoScores}
+                  onScoreChange={handleScoreAdjustment}
+                  rubricFrames={rubricFrames}
+                />
               </CardContent>
             </Card>
 
