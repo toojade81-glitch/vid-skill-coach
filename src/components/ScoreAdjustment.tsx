@@ -12,7 +12,7 @@ interface ScoreAdjustmentProps {
   autoScores: Record<string, number>;
   onScoreChange: (scores: Record<string, number>) => void;
   rubricFrames?: Record<string, string>;
-  videoFile?: File;
+  videoUrl?: string;
 }
 
 const SKILL_CRITERIA = {
@@ -94,7 +94,7 @@ const SKILL_CRITERIA = {
   }
 };
 
-const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, videoFile }: ScoreAdjustmentProps) => {
+const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, videoUrl }: ScoreAdjustmentProps) => {
   const [scores, setScores] = useState<Record<string, number>>(autoScores);
   const [copied, setCopied] = useState(false);
 
@@ -254,15 +254,13 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, 
             )}
 
             {/* Video scrubber for manual frame selection */}
-            {videoFile && (
+            {videoUrl && (
               <div className="mb-4">
                 {/* DEBUG: Log VideoSlider component state */}
                 {(() => {
                   console.log("🎬 VIDEOSLIDER DEBUG:", {
-                    hasVideoFile: !!videoFile,
-                    videoFileName: videoFile.name,
-                    videoFileType: videoFile.type,
-                    videoFileSize: videoFile.size,
+                    hasVideoUrl: !!videoUrl,
+                    videoUrl: videoUrl,
                     componentRendering: true
                   });
                   return null;
@@ -271,13 +269,13 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, 
                 <div className="bg-green-50 border border-green-200 rounded-lg p-2 mb-2">
                   <div className="text-xs font-medium text-green-900 mb-1">🎥 VIDEO DEBUG:</div>
                   <div className="text-xs text-green-800">
-                    File: {videoFile.name} | Type: {videoFile.type} | Size: {(videoFile.size / 1024 / 1024).toFixed(1)}MB
+                    URL: {videoUrl ? 'Available' : 'None'} | Source: Supabase Storage
                   </div>
                 </div>
                 
                 <div className="text-xs font-medium text-muted-foreground mb-2">Manual Frame Review:</div>
                 <VideoSlider
-                  videoFile={videoFile}
+                  videoUrl={videoUrl}
                   className="w-full"
                 />
               </div>

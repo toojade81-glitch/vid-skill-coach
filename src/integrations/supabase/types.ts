@@ -87,6 +87,33 @@ export type Database = {
           },
         ]
       }
+      reference_videos: {
+        Row: {
+          file_name: string | null
+          file_size: number | null
+          id: string
+          skill: string
+          uploaded_at: string | null
+          video_url: string
+        }
+        Insert: {
+          file_name?: string | null
+          file_size?: number | null
+          id?: string
+          skill: string
+          uploaded_at?: string | null
+          video_url: string
+        }
+        Update: {
+          file_name?: string | null
+          file_size?: number | null
+          id?: string
+          skill?: string
+          uploaded_at?: string | null
+          video_url?: string
+        }
+        Relationships: []
+      }
       rubrics: {
         Row: {
           created_at: string
@@ -194,6 +221,45 @@ export type Database = {
           name?: string
           sex?: string | null
           student_id?: string
+        }
+        Relationships: []
+      }
+      video_uploads: {
+        Row: {
+          analysis_data: Json | null
+          created_at: string
+          file_name: string
+          file_size: number
+          file_type: string
+          id: string
+          storage_path: string
+          updated_at: string
+          upload_timestamp: string
+          user_id: string | null
+        }
+        Insert: {
+          analysis_data?: Json | null
+          created_at?: string
+          file_name: string
+          file_size: number
+          file_type: string
+          id?: string
+          storage_path: string
+          updated_at?: string
+          upload_timestamp?: string
+          user_id?: string | null
+        }
+        Update: {
+          analysis_data?: Json | null
+          created_at?: string
+          file_name?: string
+          file_size?: number
+          file_type?: string
+          id?: string
+          storage_path?: string
+          updated_at?: string
+          upload_timestamp?: string
+          user_id?: string | null
         }
         Relationships: []
       }

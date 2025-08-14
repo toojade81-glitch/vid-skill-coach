@@ -9,6 +9,7 @@ import { ArrowLeft, Upload, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import RealMoveNetAnalyzer from "@/components/RealMoveNetAnalyzer";
 import ScoreAdjustment from "@/components/ScoreAdjustment";
+import { VideoUploadService } from "@/lib/videoUploadService";
 
 const NewAttempt = () => {
   const navigate = useNavigate();
@@ -17,6 +18,8 @@ const NewAttempt = () => {
     notes: ""
   });
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string>("");
+  const [uploadId, setUploadId] = useState<string>("");
   const [step, setStep] = useState<"form" | "analyze" | "review">("form");
   const [autoScores, setAutoScores] = useState<Record<string, number>>({});
   const [finalScores, setFinalScores] = useState<Record<string, number>>({});
@@ -26,7 +29,7 @@ const NewAttempt = () => {
   const [capturedFrame, setCapturedFrame] = useState<string>("");
   const [copied, setCopied] = useState(false);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       console.log("📁 File selected:", file.name, file.size, file.type);
@@ -38,8 +41,28 @@ const NewAttempt = () => {
         toast.error("Please select a video file.");
         return;
       }
+      
       setVideoFile(file);
-      setStep("analyze");
+      
+      try {
+        toast.loading("Uploading video to storage...");
+        
+        // Upload to Supabase Storage
+        const result = await VideoUploadService.uploadVideo(file);
+        
+        setVideoUrl(result.url);
+        setUploadId(result.uploadId);
+        
+        toast.dismiss();
+        toast.success("Video uploaded successfully!");
+        console.log("✅ Video uploaded:", result);
+        
+        setStep("analyze");
+      } catch (error) {
+        console.error("❌ Upload failed:", error);
+        toast.dismiss();
+        toast.error("Upload failed. Please try again.");
+      }
     }
   };
 
@@ -328,14 +351,16 @@ const NewAttempt = () => {
             
             {/* Add page header for debugging */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <div className="text-xs font-medium text-blue-900 mb-1">🔧 DEBUG INFO:</div>
-              <div className="text-xs text-blue-800 space-y-1">
-                <div>Video File: {videoFile ? `${videoFile.name} (${(videoFile.size / 1024 / 1024).toFixed(1)}MB)` : 'None'}</div>
-                <div>Skill: {formData.skill}</div>
-                <div>Auto Scores: {Object.keys(autoScores || {}).length} criteria</div>
-                <div>Rubric Frames: {Object.keys(rubricFrames || {}).length} frames</div>
-                <div>Confidence: {Math.round(confidence * 100)}%</div>
-              </div>
+                <div className="text-xs text-muted-foreground mb-1">🔧 DEBUG INFO:</div>
+                <div className="text-xs text-blue-800 space-y-1">
+                  <div>Video File: {videoFile ? `${videoFile.name} (${(videoFile.size / 1024 / 1024).toFixed(1)}MB)` : 'None'}</div>
+                  <div>Video URL: {videoUrl ? 'Available' : 'None'}</div>
+                  <div>Upload ID: {uploadId || 'None'}</div>
+                  <div>Skill: {formData.skill}</div>
+                  <div>Auto Scores: {Object.keys(autoScores || {}).length} criteria</div>
+                  <div>Rubric Frames: {Object.keys(rubricFrames || {}).length} frames</div>
+                  <div>Confidence: {Math.round(confidence * 100)}%</div>
+                </div>
             </div>
             <Card className="shadow-lg border-amber-200 bg-amber-50">
               <CardHeader>
@@ -371,7 +396,7 @@ const NewAttempt = () => {
                   autoScores={autoScores}
                   onScoreChange={handleScoreAdjustment}
                   rubricFrames={rubricFrames}
-                  videoFile={videoFile}
+                  videoUrl={videoUrl}
                 />
               </CardContent>
             </Card>
