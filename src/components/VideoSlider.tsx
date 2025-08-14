@@ -7,19 +7,23 @@ interface VideoSliderProps {
   videoFile: File;
   onFrameCapture?: (frame: string) => void;
   className?: string;
+  initialTime?: number;
 }
 
-const VideoSlider = ({ videoFile, onFrameCapture, className = "" }: VideoSliderProps) => {
+const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 0 }: VideoSliderProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [videoUrl, setVideoUrl] = useState<string>("");
   const [duration, setDuration] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
+  const [currentTime, setCurrentTime] = useState(initialTime);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string>("");
 
   useEffect(() => {
     if (videoFile) {
+      setIsLoading(true);
+      setError("");
       const url = URL.createObjectURL(videoFile);
       setVideoUrl(url);
       
@@ -33,8 +37,25 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "" }: VideoSliderP
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
       setIsLoading(false);
+      
+      // Set initial time if provided
+      if (initialTime > 0 && initialTime < videoRef.current.duration) {
+        videoRef.current.currentTime = initialTime;
+        setCurrentTime(initialTime);
+      }
+      
       console.log("Video loaded, duration:", videoRef.current.duration);
     }
+  };
+
+  const handleLoadedData = () => {
+    setIsLoading(false);
+  };
+
+  const handleError = () => {
+    setIsLoading(false);
+    setError("Failed to load video");
+    console.error("Video loading error");
   };
 
   const handleTimeUpdate = () => {
@@ -86,6 +107,14 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "" }: VideoSliderP
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  if (error) {
+    return (
+      <div className={`bg-destructive/10 border border-destructive/20 rounded-lg p-4 text-center ${className}`}>
+        <div className="text-sm text-destructive">{error}</div>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className={`bg-muted rounded-lg p-4 text-center ${className}`}>
@@ -105,9 +134,12 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "" }: VideoSliderP
           src={videoUrl}
           className="w-full h-32 object-cover rounded-lg border border-border"
           onLoadedMetadata={handleLoadedMetadata}
+          onLoadedData={handleLoadedData}
+          onError={handleError}
           onTimeUpdate={handleTimeUpdate}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
+          preload="metadata"
           muted
           playsInline
         />
