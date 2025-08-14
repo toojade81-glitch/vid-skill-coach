@@ -20,6 +20,7 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>("");
   const [loadingProgress, setLoadingProgress] = useState<string>("Initializing...");
+  const [videoKey, setVideoKey] = useState<string>("");
 
   const resetVideoState = useCallback(() => {
     setDuration(0);
@@ -59,61 +60,104 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
 
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
+    let cleanupUrl: string | null = null;
     
     if (videoFile) {
-      console.log("Processing new video file:", {
+      console.log("🎬 Processing new video file:", {
         name: videoFile.name,
         type: videoFile.type,
-        size: videoFile.size
+        size: videoFile.size,
+        lastModified: videoFile.lastModified
       });
 
       resetVideoState();
       setLoadingProgress("Creating video URL...");
       
       try {
+        // Create blob URL with proper error handling
         const url = URL.createObjectURL(videoFile);
-        console.log("Created blob URL:", url);
-        setVideoUrl(url);
-        setLoadingProgress("Loading video...");
+        cleanupUrl = url;
+        
+        // Generate unique key to force video element refresh
+        const key = `${videoFile.name}-${videoFile.size}-${videoFile.lastModified}-${Date.now()}`;
+        setVideoKey(key);
+        
+        console.log("🔗 Created blob URL:", url);
+        console.log("🔑 Video key:", key);
+        
+        // Test blob URL validity
+        fetch(url, { method: 'HEAD' })
+          .then(response => {
+            console.log("🌐 Blob URL test - Status:", response.status, "Type:", response.headers.get('content-type'));
+            if (response.ok) {
+              setVideoUrl(url);
+              setLoadingProgress("Video URL ready, loading...");
+            } else {
+              throw new Error(`Blob URL test failed: ${response.status}`);
+            }
+          })
+          .catch(err => {
+            console.error("❌ Blob URL test failed:", err);
+            setError("Failed to validate video URL");
+            setIsLoading(false);
+          });
 
-        // Fallback timeout for stuck loading - capture loading state at effect creation
+        // Fallback timeout for stuck loading
         timeoutId = setTimeout(() => {
-          console.warn("Video loading timeout reached");
+          console.warn("⏰ Video loading timeout reached after 8 seconds");
           const video = videoRef.current;
           if (video) {
-            console.log("Timeout state check:", {
+            console.log("🔍 Timeout state check:", {
+              src: video.src,
               readyState: video.readyState,
               networkState: video.networkState,
-              error: video.error
+              error: video.error,
+              duration: video.duration,
+              videoWidth: video.videoWidth,
+              videoHeight: video.videoHeight
             });
             
             if (video.error) {
-              setError(`Video error: ${video.error.message}`);
+              setError(`Video error: ${video.error.message} (Code: ${video.error.code})`);
             } else if (video.networkState === 3) {
               setError("Network error: Unable to load video");
             } else if (video.readyState === 0) {
               setError("Video format may not be supported");
-            } else {
-              // Force check if video is actually ready
+            } else if (video.duration && video.duration > 0) {
+              // Video is actually ready but events didn't fire properly
+              console.log("🔧 Force completing video setup");
               handleVideoReady();
+            } else {
+              // Try with a test video URL
+              setError("Video loading failed - trying test video");
+              const testUrl = "data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDE=";
+              video.src = testUrl;
             }
             setIsLoading(false);
           }
-        }, 3000);
+        }, 8000);
 
         return () => {
-          clearTimeout(timeoutId);
-          URL.revokeObjectURL(url);
+          if (timeoutId) clearTimeout(timeoutId);
+          if (cleanupUrl) {
+            console.log("🧹 Cleaning up blob URL:", cleanupUrl);
+            URL.revokeObjectURL(cleanupUrl);
+          }
         };
       } catch (error) {
-        console.error("Failed to create video URL:", error);
+        console.error("❌ Failed to create video URL:", error);
         setError("Failed to process video file");
         setIsLoading(false);
       }
+    } else {
+      console.log("❌ No video file provided");
+      setError("No video source");
+      setIsLoading(false);
     }
 
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
+      if (cleanupUrl) URL.revokeObjectURL(cleanupUrl);
     };
   }, [videoFile, handleVideoReady, resetVideoState]);
 
@@ -226,7 +270,21 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
   if (error) {
     return (
       <div className={`bg-destructive/10 border border-destructive/20 rounded-lg p-4 text-center ${className}`}>
-        <div className="text-sm text-destructive">{error}</div>
+        <div className="text-sm text-destructive mb-2">{error}</div>
+        {videoFile && (
+          <div className="text-xs text-muted-foreground">
+            File: {videoFile.name} ({(videoFile.size / 1024 / 1024).toFixed(1)}MB, {videoFile.type})
+          </div>
+        )}
+        <video
+          controls
+          className="w-full h-32 mt-2 rounded border"
+          src={videoUrl || URL.createObjectURL(videoFile)}
+          playsInline
+          muted
+        >
+          Your browser does not support video playback.
+        </video>
       </div>
     );
   }
@@ -248,7 +306,7 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
         <video
           ref={videoRef}
           src={videoUrl}
-          key={videoFile.name + videoFile.size}
+          key={videoKey}
           className="w-full h-32 object-cover rounded-lg border border-border"
           onLoadStart={handleLoadStart}
           onLoadedMetadata={handleLoadedMetadata}
@@ -259,10 +317,11 @@ const VideoSlider = ({ videoFile, onFrameCapture, className = "", initialTime = 
           onTimeUpdate={handleTimeUpdate}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
-          preload="auto"
+          preload="metadata"
           controls={false}
           muted
           playsInline
+          crossOrigin="anonymous"
         />
         <canvas
           ref={canvasRef}
