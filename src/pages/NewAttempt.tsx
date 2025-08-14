@@ -121,38 +121,70 @@ const NewAttempt = () => {
   };
 
   const startRecording = () => {
-    if (!stream) return;
+    if (!stream) {
+      console.error("❌ No stream available for recording");
+      toast.error("Camera not available for recording");
+      return;
+    }
+
+    console.log("🔴 Starting recording...");
+    console.log("📹 Stream active tracks:", stream.getVideoTracks().map(t => t.readyState));
     
     const mediaRecorder = new MediaRecorder(stream);
     const chunks: BlobPart[] = [];
     
-    mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+    mediaRecorder.ondataavailable = (e) => {
+      console.log("📦 Recording data chunk received");
+      chunks.push(e.data);
+    };
+    
     mediaRecorder.onstop = () => {
+      console.log("⏹️ Recording stopped, creating video file...");
       const blob = new Blob(chunks, { type: 'video/webm' });
       const file = new File([blob], 'recording.webm', { type: 'video/webm' });
       setVideoFile(file);
       setIsRecording(false);
-      // Don't stop camera - keep viewfinder active
+      // Keep camera stream active for continued viewfinder
+      console.log("✅ Video file created, moving to analysis");
       setStep("analyze");
+    };
+
+    mediaRecorder.onerror = (e) => {
+      console.error("❌ MediaRecorder error:", e);
+      toast.error("Recording failed");
+      setIsRecording(false);
     };
     
     mediaRecorderRef.current = mediaRecorder;
     setIsRecording(true);
-    mediaRecorder.start();
     
-    // Stop recording after 10 seconds
-    setTimeout(() => {
-      if (mediaRecorder.state === "recording") {
-        mediaRecorder.stop();
-      }
-    }, 10000);
-    
-    toast.success("Recording started! Will stop automatically after 10 seconds.");
+    try {
+      mediaRecorder.start();
+      console.log("▶️ MediaRecorder started successfully");
+      console.log("📹 Video element playing state:", !videoRef.current?.paused);
+      
+      // Stop recording after 10 seconds
+      setTimeout(() => {
+        if (mediaRecorder.state === "recording") {
+          console.log("⏰ Auto-stopping recording after 10 seconds");
+          mediaRecorder.stop();
+        }
+      }, 10000);
+      
+      toast.success("Recording started! Will stop automatically after 10 seconds.");
+    } catch (error) {
+      console.error("❌ Failed to start recording:", error);
+      toast.error("Failed to start recording");
+      setIsRecording(false);
+    }
   };
 
   const stopRecording = () => {
+    console.log("⏹️ Manually stopping recording...");
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       mediaRecorderRef.current.stop();
+    } else {
+      console.log("❌ No active recording to stop");
     }
   };
 
@@ -427,13 +459,27 @@ const NewAttempt = () => {
 
               {isRecording && (
                 <div className="space-y-4">
-                  <div className="relative bg-black rounded-lg overflow-hidden border-2 border-dashed border-white/30">
+                  <div className="relative bg-black rounded-lg overflow-hidden border-2 border-red-500/50">
                     {/* Recording indicator */}
                     <div className="absolute top-2 left-2 z-10">
-                      <div className="flex items-center gap-2 bg-red-600/90 px-2 py-1 rounded text-white text-xs animate-pulse">
-                        <div className="w-2 h-2 bg-red-200 rounded-full animate-pulse" />
+                      <div className="flex items-center gap-2 bg-red-600/90 px-3 py-1 rounded text-white text-sm font-medium animate-pulse">
+                        <div className="w-3 h-3 bg-red-200 rounded-full animate-ping" />
                         RECORDING
                       </div>
+                    </div>
+                    
+                    {/* Camera switch during recording */}
+                    <div className="absolute top-2 right-2 z-10">
+                      <Button
+                        onClick={switchCamera}
+                        variant="secondary"
+                        size="sm"
+                        className="bg-black/70 hover:bg-black/80 text-white border-white/20"
+                        disabled={!stream || isRecording}
+                      >
+                        <RotateCcw className="h-4 w-4 mr-1" />
+                        {cameraFacing === "user" ? "Rear" : "Front"}
+                      </Button>
                     </div>
                     
                     <video
@@ -441,16 +487,35 @@ const NewAttempt = () => {
                       autoPlay
                       muted
                       playsInline
-                      className="w-full h-64 object-cover"
+                      className="w-full h-64 object-cover bg-gray-900"
                       style={{ 
                         transform: cameraFacing === "user" ? 'scaleX(-1)' : 'none' 
                       }}
+                      onError={(e) => {
+                        console.error("❌ Video error during recording:", e);
+                      }}
+                      onPlay={() => {
+                        console.log("▶️ Video playing during recording");
+                      }}
+                      onPause={() => {
+                        console.log("⏸️ Video paused during recording");
+                      }}
                     />
                     
-                    {/* Recording timer and camera info */}
+                    {/* Recording info */}
                     <div className="absolute bottom-2 left-2 right-2 z-10 flex justify-between items-center">
                       <div className="bg-black/70 px-2 py-1 rounded text-white text-xs">
                         {cameraFacing === "user" ? "📱 Front Camera" : "📹 Rear Camera"}
+                      </div>
+                      <div className="bg-red-600/90 px-2 py-1 rounded text-white text-xs">
+                        Recording in progress...
+                      </div>
+                    </div>
+                    
+                    {/* Debug info */}
+                    <div className="absolute bottom-2 right-2 z-10">
+                      <div className="bg-blue-600/90 px-2 py-1 rounded text-white text-xs">
+                        Stream: {stream ? '✅' : '❌'} | Recording: {isRecording ? '🔴' : '⚫'}
                       </div>
                     </div>
                   </div>
