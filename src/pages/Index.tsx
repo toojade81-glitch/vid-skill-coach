@@ -114,6 +114,25 @@ const Index = () => {
           </div>
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="border-t bg-background/80 backdrop-blur mt-12">
+        <div className="container mx-auto px-4 py-6 text-center">
+          <div className="text-sm text-muted-foreground">
+            <div>Created by Chia Tai Yu</div>
+            <div className="mt-1">
+              <a 
+                href="https://www.tinyurl.com/peaitools" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                www.tinyurl.com/peaitools
+              </a>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 };
