@@ -52,6 +52,7 @@ const ReferenceVideoUpload: React.FC<ReferenceVideoUploadProps> = ({
       if (data) {
         console.log('Found existing reference video:', data);
         setExistingVideo(data);
+        // Auto-proceed with existing reference video
         onReferenceVideoReady(data.video_url);
       }
     } catch (error) {
@@ -168,6 +169,47 @@ const ReferenceVideoUpload: React.FC<ReferenceVideoUploadProps> = ({
         <CardContent className="p-6 text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
           <p className="text-sm text-muted-foreground">Checking for existing reference video...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // If reference video exists and was already used, auto-proceed
+  if (existingVideo && !loading) {
+    return (
+      <Card className="mb-4 border-green-200 bg-green-50">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-3 text-green-700">
+            <CheckCircle2 className="h-8 w-8" />
+            <div className="flex-1">
+              <p className="font-semibold text-lg">✅ Reference Video Ready!</p>
+              <p className="text-sm">
+                Using existing reference video for {skill} (uploaded {new Date(existingVideo.uploaded_at).toLocaleDateString()})
+              </p>
+              <p className="text-xs mt-1 text-green-600">
+                This will be compared against your performance for more accurate scoring
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex gap-2 mt-4">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setExistingVideo(null)}
+            >
+              Upload Different Video
+            </Button>
+            {onSkip && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={onSkip}
+              >
+                Skip Reference
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
     );

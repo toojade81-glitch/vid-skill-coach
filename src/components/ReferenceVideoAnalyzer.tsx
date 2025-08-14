@@ -338,7 +338,14 @@ const ReferenceVideoAnalyzer: React.FC<ReferenceVideoAnalyzerProps> = ({
   };
 
   const analyzeVideo = useCallback(async () => {
-    if (!detector || !selectedFile || !videoRef.current || !referenceVideoUrl) return;
+    if (!detector || !selectedFile || !videoRef.current) return;
+    
+    if (!referenceVideoUrl) {
+      console.log("⚠️ No reference video URL provided - skipping reference comparison");
+      setError("No reference video available for comparison");
+      setAnalysisPhase('error');
+      return;
+    }
 
     setIsLoading(true);
     setAnalysisPhase('analyzing');
@@ -371,10 +378,10 @@ const ReferenceVideoAnalyzer: React.FC<ReferenceVideoAnalyzerProps> = ({
 
   // Load video when file changes
   useEffect(() => {
-    if (selectedFile && detector && referenceVideoUrl) {
+    if (selectedFile && detector) {
       analyzeVideo();
     }
-  }, [selectedFile, detector, referenceVideoUrl, analyzeVideo]);
+  }, [selectedFile, detector, analyzeVideo]);
 
   return (
     <div className="space-y-4">
