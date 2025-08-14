@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Upload } from "lucide-react";
+import { ArrowLeft, Upload, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import RealMoveNetAnalyzer from "@/components/RealMoveNetAnalyzer";
 import ScoreAdjustment from "@/components/ScoreAdjustment";
@@ -24,6 +24,7 @@ const NewAttempt = () => {
   const [confidence, setConfidence] = useState(0);
   const [rubricFrames, setRubricFrames] = useState<Record<string, string>>({});
   const [capturedFrame, setCapturedFrame] = useState<string>("");
+  const [copied, setCopied] = useState(false);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -67,6 +68,61 @@ const NewAttempt = () => {
 
   const handleScoreAdjustment = (adjustedScores: Record<string, number>) => {
     setFinalScores(adjustedScores);
+  };
+
+  const copyToClipboard = async () => {
+    try {
+      const SKILL_CRITERIA = {
+        Setting: {
+          readyFootwork: { name: "Ready Position & Footwork", descriptions: { 0: "No ready stance; feet stationary; poor positioning under ball.", 1: "Ready stance inconsistent; slow or incomplete movement to get under ball.", 2: "Consistent low stance; some movement to adjust, minor positioning errors.", 3: "Consistently low, balanced stance; quick, small steps to get perfectly under ball." }},
+          handShapeContact: { name: "Hand Shape & Contact Zone", descriptions: { 0: "Hands apart or flat; contact well below chin/neck.", 1: "Hands form partial shape; contact at chin/neck level.", 2: "Triangle/window formed; contact just above forehead but slightly low.", 3: "Perfect triangle/window; contact above forehead in correct setting zone." }},
+          alignmentExtension: { name: "Body Alignment & Extension", descriptions: { 0: "Shoulders/hips misaligned to target; no upward extension.", 1: "Minor alignment; limited knee/hip/arm extension.", 2: "Mostly square to target; good upward extension but minor sequencing errors.", 3: "Fully square to target; smooth knees→hips→arms extension in correct order." }},
+          followThroughControl: { name: "Follow-Through & Ball Control", descriptions: { 0: "Arms/wrists drop immediately; ball control inconsistent.", 1: "Short or abrupt follow-through; ball occasionally off target.", 2: "Controlled follow-through to target; ball mostly accurate.", 3: "Smooth follow-through to target; consistent arc, height, and accuracy." }}
+        },
+        Digging: {
+          readyPlatform: { name: "Ready Position & Platform", descriptions: { 0: "Upright stance; bent arms; no platform formed.", 1: "Some knee flexion; arms bent or platform uneven.", 2: "Low, balanced stance; elbows mostly locked; fairly flat platform.", 3: "Low, stable stance; elbows locked; perfectly flat, steady platform." }},
+          contactAngle: { name: "Contact Point & Angle", descriptions: { 0: "Contact at wrists or hands; ball angle uncontrolled.", 1: "Contact on lower forearms but angle inconsistent.", 2: "Contact on mid-forearms; platform angle mostly directs ball upward/forward.", 3: "Contact on mid-forearms below waist; precise platform angle to target." }},
+          legDriveShoulder: { name: "Leg Drive & Shoulder Lift", descriptions: { 0: "No upward drive; swing arms instead of using legs.", 1: "Minimal leg extension; uneven shoulder motion.", 2: "Legs provide most power; subtle shoulder lift assists control.", 3: "Smooth, powerful leg drive with coordinated shoulder lift for perfect control." }},
+          followThroughControl: { name: "Follow-Through & Control", descriptions: { 0: "Arms/platform collapse immediately after contact; ball uncontrolled.", 1: "Platform drops quickly; ball sometimes accurate.", 2: "Platform maintained briefly; ball mostly on target.", 3: "Platform held steady after contact; ball consistently accurate to target." }}
+        }
+      };
+
+      const criteria = SKILL_CRITERIA[formData.skill as keyof typeof SKILL_CRITERIA];
+      const totalScore = Object.values(finalScores).reduce((sum, score) => sum + score, 0);
+      const maxScore = Object.keys(finalScores).length * 3;
+      
+      let assessmentText = `=== VOLLEYBALL ${formData.skill.toUpperCase()} ASSESSMENT ===\n\n`;
+      assessmentText += `Overall Score: ${totalScore}/${maxScore} (${Math.round((totalScore / maxScore) * 100)}%)\n\n`;
+      assessmentText += `DETAILED SCORES:\n`;
+      
+      Object.entries(finalScores).forEach(([key, score]) => {
+        const criterion = criteria[key as keyof typeof criteria];
+        if (criterion) {
+          assessmentText += `\n${criterion.name}: ${score}/3\n`;
+          assessmentText += `Description: ${criterion.descriptions[score as keyof typeof criterion.descriptions]}\n`;
+        }
+      });
+      
+      if (formData.notes) {
+        assessmentText += `\nNOTES: ${formData.notes}\n`;
+      }
+      
+      assessmentText += `\n=== ANALYSIS REQUEST ===\n`;
+      assessmentText += `Please analyze this volleyball ${formData.skill.toLowerCase()} assessment and provide:\n`;
+      assessmentText += `1. Key strengths identified\n`;
+      assessmentText += `2. Primary areas for improvement\n`;
+      assessmentText += `3. Specific drills or exercises to address weaknesses\n`;
+      assessmentText += `4. Progressive training plan suggestions\n`;
+      assessmentText += `5. Tips for consistent performance improvement\n`;
+      
+      await navigator.clipboard.writeText(assessmentText);
+      setCopied(true);
+      toast.success("Assessment copied! Paste into ChatGPT for detailed feedback.");
+      
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      toast.error("Failed to copy to clipboard");
+    }
   };
 
   const saveAttempt = async () => {
@@ -239,6 +295,14 @@ const NewAttempt = () => {
             </Card>
 
             <div className="flex gap-3">
+              <Button
+                onClick={copyToClipboard}
+                variant="outline"
+                className="flex-1 gap-2"
+              >
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copied ? "Copied!" : "Copy for GPT"}
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => setStep("analyze")}

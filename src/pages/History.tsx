@@ -3,24 +3,25 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Calendar, Trophy, Target, FileText, Trash2 } from "lucide-react";
+import { ArrowLeft, Calendar, Trophy, FileText, Trash2, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 
 interface AttemptData {
   id: string;
   date: string;
   skill: string;
-  target: string;
   notes: string;
   autoScores: Record<string, number>;
   finalScores: Record<string, number>;
   metrics: any;
   confidence: number;
+  rubricFrames?: Record<string, string>;
 }
 
 const History = () => {
   const [attempts, setAttempts] = useState<AttemptData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     loadAttempts();
@@ -64,6 +65,62 @@ const History = () => {
     if (score >= 2.5) return "bg-green-100 text-green-800";
     if (score >= 1.5) return "bg-yellow-100 text-yellow-800";
     return "bg-red-100 text-red-800";
+  };
+
+  const copyAssessmentToClipboard = async (attempt: AttemptData) => {
+    try {
+      const SKILL_CRITERIA = {
+        Setting: {
+          readyFootwork: { name: "Ready Position & Footwork", descriptions: { 0: "No ready stance; feet stationary; poor positioning under ball.", 1: "Ready stance inconsistent; slow or incomplete movement to get under ball.", 2: "Consistent low stance; some movement to adjust, minor positioning errors.", 3: "Consistently low, balanced stance; quick, small steps to get perfectly under ball." }},
+          handShapeContact: { name: "Hand Shape & Contact Zone", descriptions: { 0: "Hands apart or flat; contact well below chin/neck.", 1: "Hands form partial shape; contact at chin/neck level.", 2: "Triangle/window formed; contact just above forehead but slightly low.", 3: "Perfect triangle/window; contact above forehead in correct setting zone." }},
+          alignmentExtension: { name: "Body Alignment & Extension", descriptions: { 0: "Shoulders/hips misaligned to target; no upward extension.", 1: "Minor alignment; limited knee/hip/arm extension.", 2: "Mostly square to target; good upward extension but minor sequencing errors.", 3: "Fully square to target; smooth knees→hips→arms extension in correct order." }},
+          followThroughControl: { name: "Follow-Through & Ball Control", descriptions: { 0: "Arms/wrists drop immediately; ball control inconsistent.", 1: "Short or abrupt follow-through; ball occasionally off target.", 2: "Controlled follow-through to target; ball mostly accurate.", 3: "Smooth follow-through to target; consistent arc, height, and accuracy." }}
+        },
+        Digging: {
+          readyPlatform: { name: "Ready Position & Platform", descriptions: { 0: "Upright stance; bent arms; no platform formed.", 1: "Some knee flexion; arms bent or platform uneven.", 2: "Low, balanced stance; elbows mostly locked; fairly flat platform.", 3: "Low, stable stance; elbows locked; perfectly flat, steady platform." }},
+          contactAngle: { name: "Contact Point & Angle", descriptions: { 0: "Contact at wrists or hands; ball angle uncontrolled.", 1: "Contact on lower forearms but angle inconsistent.", 2: "Contact on mid-forearms; platform angle mostly directs ball upward/forward.", 3: "Contact on mid-forearms below waist; precise platform angle to target." }},
+          legDriveShoulder: { name: "Leg Drive & Shoulder Lift", descriptions: { 0: "No upward drive; swing arms instead of using legs.", 1: "Minimal leg extension; uneven shoulder motion.", 2: "Legs provide most power; subtle shoulder lift assists control.", 3: "Smooth, powerful leg drive with coordinated shoulder lift for perfect control." }},
+          followThroughControl: { name: "Follow-Through & Control", descriptions: { 0: "Arms/platform collapse immediately after contact; ball uncontrolled.", 1: "Platform drops quickly; ball sometimes accurate.", 2: "Platform maintained briefly; ball mostly on target.", 3: "Platform held steady after contact; ball consistently accurate to target." }}
+        }
+      };
+
+      const criteria = SKILL_CRITERIA[attempt.skill as keyof typeof SKILL_CRITERIA];
+      const totalScore = Object.values(attempt.finalScores).reduce((sum, score) => sum + score, 0);
+      const maxScore = Object.keys(attempt.finalScores).length * 3;
+      
+      let assessmentText = `=== VOLLEYBALL ${attempt.skill.toUpperCase()} ASSESSMENT ===\n\n`;
+      assessmentText += `Assessment Date: ${new Date(attempt.date).toLocaleDateString()}\n`;
+      assessmentText += `Overall Score: ${totalScore}/${maxScore} (${Math.round((totalScore / maxScore) * 100)}%)\n\n`;
+      assessmentText += `DETAILED SCORES:\n`;
+      
+      Object.entries(attempt.finalScores).forEach(([key, score]) => {
+        const criterion = criteria[key as keyof typeof criteria];
+        if (criterion) {
+          assessmentText += `\n${criterion.name}: ${score}/3\n`;
+          assessmentText += `Description: ${criterion.descriptions[score as keyof typeof criterion.descriptions]}\n`;
+        }
+      });
+      
+      if (attempt.notes) {
+        assessmentText += `\nNOTES: ${attempt.notes}\n`;
+      }
+      
+      assessmentText += `\n=== ANALYSIS REQUEST ===\n`;
+      assessmentText += `Please analyze this volleyball ${attempt.skill.toLowerCase()} assessment and provide:\n`;
+      assessmentText += `1. Key strengths identified\n`;
+      assessmentText += `2. Primary areas for improvement\n`;
+      assessmentText += `3. Specific drills or exercises to address weaknesses\n`;
+      assessmentText += `4. Progressive training plan suggestions\n`;
+      assessmentText += `5. Tips for consistent performance improvement\n`;
+      
+      await navigator.clipboard.writeText(assessmentText);
+      setCopiedId(attempt.id);
+      toast.success("Assessment copied! Paste into ChatGPT for detailed feedback.");
+      
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (error) {
+      toast.error("Failed to copy to clipboard");
+    }
   };
 
   const calculateAverageScore = (scores: Record<string, number>) => {
@@ -154,20 +211,19 @@ const History = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Target className="h-4 w-4 text-primary" />
-                        <span className="font-medium">{attempt.skill}</span>
-                        <Badge variant="outline">{attempt.target} Target</Badge>
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        <Trophy className="h-4 w-4 text-primary" />
-                        <span className="text-sm">Average Score:</span>
-                        <Badge className={getScoreColor(calculateAverageScore(attempt.finalScores))}>
-                          {calculateAverageScore(attempt.finalScores).toFixed(1)}/3.0
-                        </Badge>
-                      </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Trophy className="h-4 w-4 text-primary" />
+                      <span className="font-medium">{attempt.skill}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Trophy className="h-4 w-4 text-primary" />
+                      <span className="text-sm">Average Score:</span>
+                      <Badge className={getScoreColor(calculateAverageScore(attempt.finalScores))}>
+                        {calculateAverageScore(attempt.finalScores).toFixed(1)}/3.0
+                      </Badge>
+                    </div>
                       
                       <div className="text-sm text-muted-foreground">
                         Confidence: {Math.round(attempt.confidence * 100)}%
@@ -198,6 +254,18 @@ const History = () => {
                       <p className="text-sm text-muted-foreground">{attempt.notes}</p>
                     </div>
                   )}
+                  
+                  <div className="mt-4 flex justify-end">
+                    <Button
+                      onClick={() => copyAssessmentToClipboard(attempt)}
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                    >
+                      {copiedId === attempt.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                      {copiedId === attempt.id ? "Copied!" : "Copy for GPT"}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}
