@@ -34,16 +34,16 @@ export class VideoUploadService {
 
       console.log("✅ Upload successful:", uploadData);
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
+      // Get signed URL (valid for 1 hour)
+      const { data: urlData, error: urlError } = await supabase.storage
         .from('pe-videos')
-        .getPublicUrl(storagePath);
+        .createSignedUrl(storagePath, 3600);
 
-      if (!urlData?.publicUrl) {
-        throw new Error("Failed to get public URL");
+      if (urlError || !urlData?.signedUrl) {
+        throw new Error(`Failed to get signed URL: ${urlError?.message}`);
       }
 
-      console.log("🔗 Public URL generated:", urlData.publicUrl);
+      console.log("🔗 Signed URL generated:", urlData.signedUrl);
 
       // Save upload metadata to database
       const { data: dbData, error: dbError } = await supabase
@@ -65,7 +65,7 @@ export class VideoUploadService {
       }
 
       return {
-        url: urlData.publicUrl,
+        url: urlData.signedUrl,
         path: storagePath,
         uploadId: dbData?.id || ''
       };
@@ -77,11 +77,15 @@ export class VideoUploadService {
   }
 
   static async getVideoUrl(path: string): Promise<string> {
-    const { data } = supabase.storage
+    const { data, error } = await supabase.storage
       .from('pe-videos')
-      .getPublicUrl(path);
+      .createSignedUrl(path, 3600);
     
-    return data.publicUrl;
+    if (error || !data?.signedUrl) {
+      throw new Error(`Failed to get signed URL: ${error?.message}`);
+    }
+    
+    return data.signedUrl;
   }
 
   static async deleteVideo(path: string): Promise<void> {
