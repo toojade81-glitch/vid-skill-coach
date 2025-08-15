@@ -1,16 +1,18 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
-import { Play, Pause } from "lucide-react";
+import { Play, Pause, RefreshCw } from "lucide-react";
+import { VideoUploadService } from "@/lib/videoUploadService";
 
-interface VideoSliderProps {
+interface VideoPlayerProps {
   videoUrl: string;
+  storagePath?: string;
   onFrameCapture?: (frame: string) => void;
   className?: string;
   initialTime?: number;
 }
 
-const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0 }: VideoSliderProps) => {
+const VideoPlayer = ({ videoUrl, storagePath, onFrameCapture, className = "", initialTime = 0 }: VideoPlayerProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [duration, setDuration] = useState(0);
@@ -18,35 +20,67 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [error, setError] = useState<string>("");
+  const [currentUrl, setCurrentUrl] = useState(videoUrl);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Debug video URL and loading
+  // Refresh signed URL function
+  const refreshUrl = useCallback(async () => {
+    if (!storagePath) return;
+    
+    setIsRefreshing(true);
+    try {
+      console.log("🔄 Refreshing video URL for path:", storagePath);
+      const newUrl = await VideoUploadService.getVideoUrl(storagePath);
+      setCurrentUrl(newUrl);
+      setError("");
+      console.log("✅ URL refreshed successfully");
+    } catch (error) {
+      console.error("❌ Failed to refresh URL:", error);
+      setError("Failed to refresh video URL");
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [storagePath]);
+
+  // Auto-refresh URL when it expires (401/403 errors)
+  const handleVideoError = useCallback(async (e: any) => {
+    const video = videoRef.current;
+    const errorCode = video?.error?.code;
+    
+    console.error("❌ Video error:", {
+      error: video?.error,
+      errorCode,
+      errorMessage: video?.error?.message,
+      networkState: video?.networkState
+    });
+
+    // If it's a network error and we have storage path, try refreshing
+    if ((errorCode === 2 || errorCode === 4) && storagePath && !isRefreshing) {
+      console.log("🔄 Network error detected, attempting URL refresh...");
+      await refreshUrl();
+    } else {
+      setError(`Video playback error: ${video?.error?.message || 'Unknown error'}`);
+      setVideoReady(false);
+    }
+  }, [storagePath, refreshUrl, isRefreshing]);
+
+  // Initialize video
   useEffect(() => {
-    console.log("🎬 VideoSlider initialized with URL:", videoUrl);
+    console.log("🎬 VideoPlayer initialized with URL:", currentUrl);
     setVideoReady(false);
     setError("");
     
-    if (!videoUrl) {
+    if (!currentUrl) {
       setError("No video URL provided");
       return;
     }
 
-    // Test the URL accessibility
-    fetch(videoUrl, { method: 'HEAD' })
-      .then(response => {
-        console.log("🌐 Video URL test:", {
-          status: response.status,
-          ok: response.ok,
-          contentType: response.headers.get('content-type')
-        });
-        if (!response.ok) {
-          setError(`Video URL not accessible (${response.status})`);
-        }
-      })
-      .catch(err => {
-        console.error("❌ Video URL test failed:", err);
-        setError("Video URL test failed");
-      });
-  }, [videoUrl]);
+    // Reset video state when URL changes
+    const video = videoRef.current;
+    if (video) {
+      video.load(); // Reload the video element
+    }
+  }, [currentUrl]);
 
   const handleVideoLoaded = () => {
     const video = videoRef.current;
@@ -67,18 +101,6 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
         setCurrentTime(initialTime);
       }
     }
-  };
-
-  const handleVideoError = (e: any) => {
-    const video = videoRef.current;
-    console.error("❌ Video error:", {
-      error: video?.error,
-      errorCode: video?.error?.code,
-      errorMessage: video?.error?.message,
-      networkState: video?.networkState
-    });
-    setError(`Video playback error: ${video?.error?.message || 'Unknown error'}`);
-    setVideoReady(false);
   };
 
   const handleTimeUpdate = () => {
@@ -115,16 +137,28 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
     }
   };
 
-  const togglePlayPause = () => {
+  const togglePlayPause = async () => {
     const video = videoRef.current;
     if (video) {
       if (isPlaying) {
         video.pause();
       } else {
-        video.play().catch(err => {
+        try {
+          await video.play();
+        } catch (err: any) {
           console.error("Play failed:", err);
-          setError("Playback failed");
-        });
+          // If play fails with network error, try refreshing URL
+          if (err.name === 'NotAllowedError' || err.name === 'AbortError') {
+            if (storagePath) {
+              console.log("🔄 Play failed, refreshing URL...");
+              await refreshUrl();
+            } else {
+              setError("Playback failed - please refresh the page");
+            }
+          } else {
+            setError("Playback failed");
+          }
+        }
       }
       setIsPlaying(!isPlaying);
     }
@@ -139,10 +173,20 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
   if (error) {
     return (
       <div className={`bg-destructive/10 border border-destructive/20 rounded-lg p-4 ${className}`}>
-        <div className="text-sm text-destructive mb-2">{error}</div>
-        <div className="text-xs text-muted-foreground mb-2">
-          URL: {videoUrl}
-        </div>
+        <div className="text-sm text-destructive mb-3">{error}</div>
+        
+        {storagePath && (
+          <Button 
+            onClick={refreshUrl} 
+            disabled={isRefreshing}
+            size="sm" 
+            variant="outline" 
+            className="mb-3 gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'Refreshing...' : 'Refresh Video'}
+          </Button>
+        )}
         
         {/* Fallback: Basic video element with controls */}
         <div className="mt-2">
@@ -150,7 +194,7 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
           <video
             controls
             className="w-full h-24 rounded border"
-            src={videoUrl}
+            src={currentUrl}
             playsInline
             muted
           >
@@ -167,7 +211,8 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
         {/* Debug info panel */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
           <div className="text-xs text-blue-800 space-y-1">
-            <div>Video URL: {videoUrl ? 'Available' : 'None'}</div>
+            <div>Video URL: {currentUrl ? 'Available' : 'None'}</div>
+            <div>Storage Path: {storagePath || 'None'}</div>
             <div>Status: Loading video...</div>
           </div>
         </div>
@@ -175,7 +220,7 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
         <div className="relative">
           <video
             ref={videoRef}
-            src={videoUrl}
+            src={currentUrl}
             className="w-full h-32 object-cover rounded-lg border border-border"
             onLoadedMetadata={handleVideoLoaded}
             onLoadedData={handleVideoLoaded}
@@ -203,7 +248,7 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
           <video
             controls
             className="w-full h-24 rounded"
-            src={videoUrl}
+            src={currentUrl}
             preload="metadata"
             playsInline
             muted
@@ -224,24 +269,37 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
       <div className="relative">
         <video
           ref={videoRef}
-          src={videoUrl}
+          src={currentUrl}
           className="w-full h-32 object-cover rounded-lg border border-border"
           onTimeUpdate={handleTimeUpdate}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
+          onError={handleVideoError}
           muted
           playsInline
           controls={false}
         />
         <canvas ref={canvasRef} className="hidden" />
-        <Button
-          onClick={togglePlayPause}
-          size="sm"
-          variant="secondary"
-          className="absolute bottom-2 right-2"
-        >
-          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-        </Button>
+        <div className="absolute bottom-2 right-2 flex gap-2">
+          {storagePath && (
+            <Button
+              onClick={refreshUrl}
+              disabled={isRefreshing}
+              size="sm"
+              variant="secondary"
+              className="gap-1"
+            >
+              <RefreshCw className={`h-3 w-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </Button>
+          )}
+          <Button
+            onClick={togglePlayPause}
+            size="sm"
+            variant="secondary"
+          >
+            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          </Button>
+        </div>
       </div>
       
       <div className="space-y-2">
@@ -266,4 +324,4 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
   );
 };
 
-export default VideoSlider;
+export default VideoPlayer;

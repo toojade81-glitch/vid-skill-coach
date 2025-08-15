@@ -45,7 +45,7 @@ const NewAttempt = () => {
       setVideoFile(file);
       
       try {
-        toast.loading("Uploading video to storage...");
+        toast.loading("Video uploading...");
         
         // Upload to Supabase Storage
         const result = await VideoUploadService.uploadVideo(file);

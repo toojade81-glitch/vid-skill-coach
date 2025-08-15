@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Copy, Check } from "lucide-react";
 import { toast } from "sonner";
-import VideoSlider from "./VideoSlider";
+import VideoPlayer from "./VideoPlayer";
 
 interface ScoreAdjustmentProps {
   skill: "Setting" | "Digging";
@@ -274,7 +274,7 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, 
                 </div>
                 
                 <div className="text-xs font-medium text-muted-foreground mb-2">Manual Frame Review:</div>
-                <VideoSlider
+                <VideoPlayer
                   videoUrl={videoUrl}
                   className="w-full"
                 />
