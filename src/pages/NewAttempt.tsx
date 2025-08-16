@@ -50,7 +50,7 @@ const NewAttempt = () => {
       
       try {
         if (useLocalMode) {
-          toast.loading("Processing video locally...");
+          const tid = toast.loading("Processing video locally...");
           
           // Use local video service
           const result = await LocalVideoService.uploadVideo(file);
@@ -59,11 +59,11 @@ const NewAttempt = () => {
           setLocalVideoId(result.localId);
           setVideoBlob(result.blob);
           
-          toast.dismiss();
+          toast.dismiss(tid);
           toast.success("Video processed locally!");
           console.log("✅ Local video processed:", result);
         } else {
-          toast.loading("Video uploading...");
+          const tid = toast.loading("Video uploading...");
           
           // Upload to Supabase Storage
           const result = await VideoUploadService.uploadVideo(file);
@@ -71,7 +71,7 @@ const NewAttempt = () => {
           setVideoUrl(result.url);
           setStoragePath(result.path);
           
-          toast.dismiss();
+          toast.dismiss(tid);
           toast.success("Video uploaded successfully!");
           console.log("✅ Video uploaded:", result);
         }

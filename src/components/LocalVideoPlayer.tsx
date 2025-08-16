@@ -33,7 +33,20 @@ const LocalVideoPlayer = ({ videoBlob, onFrameCapture, className = "", initialTi
       };
     }
   }, [videoBlob]);
-
+ 
+  // Watchdog: if the video never becomes ready, show a helpful error instead of infinite loading
+  useEffect(() => {
+    if (!videoUrl) return;
+    const timer = setTimeout(() => {
+      if (!videoReady) {
+        console.warn("⏱️ Local video still not ready; likely unsupported codec.");
+        setError("Local video playback error: Format may be unsupported. Please record in MP4 (H.264/AAC) or try a different browser.");
+        setVideoReady(false);
+      }
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [videoUrl, videoReady]);
+ 
   const handleVideoLoaded = () => {
     const video = videoRef.current;
     console.log("🎉 Local video loaded successfully:", {
@@ -147,10 +160,10 @@ const LocalVideoPlayer = ({ videoBlob, onFrameCapture, className = "", initialTi
           <video
             controls
             className="w-full h-24 rounded border"
-            src={videoUrl}
             playsInline
             muted
           >
+            <source src={videoUrl} type={(videoBlob as any)?.type || 'video/mp4'} />
             Your browser does not support video playback.
           </video>
         </div>
@@ -173,7 +186,6 @@ const LocalVideoPlayer = ({ videoBlob, onFrameCapture, className = "", initialTi
         <div className="relative">
           <video
             ref={videoRef}
-            src={videoUrl}
             className="w-full h-32 object-cover rounded-lg border border-border"
             onLoadedMetadata={handleVideoLoaded}
             onLoadedData={handleVideoLoaded}
@@ -186,7 +198,9 @@ const LocalVideoPlayer = ({ videoBlob, onFrameCapture, className = "", initialTi
             playsInline
             controls={false}
             preload="metadata"
-          />
+          >
+            <source src={videoUrl} type={(videoBlob as any)?.type || 'video/mp4'} />
+          </video>
           <canvas ref={canvasRef} className="hidden" />
           
           {/* Loading overlay */}
@@ -223,7 +237,6 @@ const LocalVideoPlayer = ({ videoBlob, onFrameCapture, className = "", initialTi
       <div className="relative">
         <video
           ref={videoRef}
-          src={videoUrl}
           className="w-full h-32 object-cover rounded-lg border border-border"
           onTimeUpdate={handleTimeUpdate}
           onPlay={() => setIsPlaying(true)}
@@ -232,7 +245,9 @@ const LocalVideoPlayer = ({ videoBlob, onFrameCapture, className = "", initialTi
           muted
           playsInline
           controls={false}
-        />
+        >
+          <source src={videoUrl} type={(videoBlob as any)?.type || 'video/mp4'} />
+        </video>
         <canvas ref={canvasRef} className="hidden" />
         <div className="absolute bottom-2 right-2">
           <Button
