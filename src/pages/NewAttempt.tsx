@@ -19,7 +19,7 @@ const NewAttempt = () => {
   });
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string>("");
-  const [uploadId, setUploadId] = useState<string>("");
+  const [storagePath, setStoragePath] = useState<string>("");
   const [step, setStep] = useState<"form" | "analyze" | "review">("form");
   const [autoScores, setAutoScores] = useState<Record<string, number>>({});
   const [finalScores, setFinalScores] = useState<Record<string, number>>({});
@@ -51,7 +51,7 @@ const NewAttempt = () => {
         const result = await VideoUploadService.uploadVideo(file);
         
         setVideoUrl(result.url);
-        setUploadId(result.uploadId);
+        setStoragePath(result.path);
         
         toast.dismiss();
         toast.success("Video uploaded successfully!");
@@ -355,7 +355,7 @@ const NewAttempt = () => {
                 <div className="text-xs text-blue-800 space-y-1">
                   <div>Video File: {videoFile ? `${videoFile.name} (${(videoFile.size / 1024 / 1024).toFixed(1)}MB)` : 'None'}</div>
                   <div>Video URL: {videoUrl ? 'Available' : 'None'}</div>
-                  <div>Upload ID: {uploadId || 'None'}</div>
+                  <div>Storage Path: {storagePath || 'None'}</div>
                   <div>Skill: {formData.skill}</div>
                   <div>Auto Scores: {Object.keys(autoScores || {}).length} criteria</div>
                   <div>Rubric Frames: {Object.keys(rubricFrames || {}).length} frames</div>
@@ -397,6 +397,7 @@ const NewAttempt = () => {
                   onScoreChange={handleScoreAdjustment}
                   rubricFrames={rubricFrames}
                   videoUrl={videoUrl}
+                  storagePath={storagePath}
                 />
               </CardContent>
             </Card>

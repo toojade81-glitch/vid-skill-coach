@@ -13,6 +13,7 @@ interface ScoreAdjustmentProps {
   onScoreChange: (scores: Record<string, number>) => void;
   rubricFrames?: Record<string, string>;
   videoUrl?: string;
+  storagePath?: string;
 }
 
 const SKILL_CRITERIA = {
@@ -94,7 +95,7 @@ const SKILL_CRITERIA = {
   }
 };
 
-const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, videoUrl }: ScoreAdjustmentProps) => {
+const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, videoUrl, storagePath }: ScoreAdjustmentProps) => {
   const [scores, setScores] = useState<Record<string, number>>(autoScores);
   const [copied, setCopied] = useState(false);
 
@@ -276,6 +277,7 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, 
                 <div className="text-xs font-medium text-muted-foreground mb-2">Manual Frame Review:</div>
                 <VideoPlayer
                   videoUrl={videoUrl}
+                  storagePath={storagePath}
                   className="w-full"
                 />
               </div>
