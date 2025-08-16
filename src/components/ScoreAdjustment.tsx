@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import VideoPlayer from "./VideoPlayer";
+import LocalVideoPlayer from "./LocalVideoPlayer";
 
 interface ScoreAdjustmentProps {
   skill: "Setting" | "Digging";
@@ -14,6 +15,9 @@ interface ScoreAdjustmentProps {
   rubricFrames?: Record<string, string>;
   videoUrl?: string;
   storagePath?: string;
+  useLocalMode?: boolean;
+  videoBlob?: Blob | null;
+  localVideoId?: string;
 }
 
 const SKILL_CRITERIA = {
@@ -95,7 +99,7 @@ const SKILL_CRITERIA = {
   }
 };
 
-const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, videoUrl, storagePath }: ScoreAdjustmentProps) => {
+const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, videoUrl, storagePath, useLocalMode = false, videoBlob, localVideoId }: ScoreAdjustmentProps) => {
   const [scores, setScores] = useState<Record<string, number>>(autoScores);
   const [copied, setCopied] = useState(false);
 
@@ -255,31 +259,21 @@ const ScoreAdjustment = ({ skill, autoScores, onScoreChange, rubricFrames = {}, 
             )}
 
             {/* Video scrubber for manual frame selection */}
-            {videoUrl && (
+            {(videoUrl || videoBlob) && (
               <div className="mb-4">
-                {/* DEBUG: Log VideoSlider component state */}
-                {(() => {
-                  console.log("🎬 VIDEOSLIDER DEBUG:", {
-                    hasVideoUrl: !!videoUrl,
-                    videoUrl: videoUrl,
-                    componentRendering: true
-                  });
-                  return null;
-                })()}
-                
-                <div className="bg-green-50 border border-green-200 rounded-lg p-2 mb-2">
-                  <div className="text-xs font-medium text-green-900 mb-1">🎥 VIDEO DEBUG:</div>
-                  <div className="text-xs text-green-800">
-                    URL: {videoUrl ? 'Available' : 'None'} | Source: Supabase Storage
-                  </div>
-                </div>
-                
                 <div className="text-xs font-medium text-muted-foreground mb-2">Manual Frame Review:</div>
-                <VideoPlayer
-                  videoUrl={videoUrl}
-                  storagePath={storagePath}
-                  className="w-full"
-                />
+                {useLocalMode && videoBlob ? (
+                  <LocalVideoPlayer
+                    videoBlob={videoBlob}
+                    className="w-full"
+                  />
+                ) : (
+                  <VideoPlayer
+                    videoUrl={videoUrl!}
+                    storagePath={storagePath}
+                    className="w-full"
+                  />
+                )}
               </div>
             )}
             

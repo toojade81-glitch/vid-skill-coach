@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import RealMoveNetAnalyzer from "@/components/RealMoveNetAnalyzer";
 import ScoreAdjustment from "@/components/ScoreAdjustment";
 import { VideoUploadService } from "@/lib/videoUploadService";
+import { LocalVideoService } from "@/lib/localVideoService";
 
 const NewAttempt = () => {
   const navigate = useNavigate();
@@ -20,6 +21,9 @@ const NewAttempt = () => {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string>("");
   const [storagePath, setStoragePath] = useState<string>("");
+  const [useLocalMode, setUseLocalMode] = useState(false);
+  const [localVideoId, setLocalVideoId] = useState<string>("");
+  const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [step, setStep] = useState<"form" | "analyze" | "review">("form");
   const [autoScores, setAutoScores] = useState<Record<string, number>>({});
   const [finalScores, setFinalScores] = useState<Record<string, number>>({});
@@ -45,23 +49,42 @@ const NewAttempt = () => {
       setVideoFile(file);
       
       try {
-        toast.loading("Video uploading...");
-        
-        // Upload to Supabase Storage
-        const result = await VideoUploadService.uploadVideo(file);
-        
-        setVideoUrl(result.url);
-        setStoragePath(result.path);
-        
-        toast.dismiss();
-        toast.success("Video uploaded successfully!");
-        console.log("✅ Video uploaded:", result);
+        if (useLocalMode) {
+          toast.loading("Processing video locally...");
+          
+          // Use local video service
+          const result = await LocalVideoService.uploadVideo(file);
+          
+          setVideoUrl(result.url);
+          setLocalVideoId(result.localId);
+          setVideoBlob(result.blob);
+          
+          toast.dismiss();
+          toast.success("Video processed locally!");
+          console.log("✅ Local video processed:", result);
+        } else {
+          toast.loading("Video uploading...");
+          
+          // Upload to Supabase Storage
+          const result = await VideoUploadService.uploadVideo(file);
+          
+          setVideoUrl(result.url);
+          setStoragePath(result.path);
+          
+          toast.dismiss();
+          toast.success("Video uploaded successfully!");
+          console.log("✅ Video uploaded:", result);
+        }
         
         setStep("analyze");
       } catch (error) {
         console.error("❌ Upload failed:", error);
         toast.dismiss();
-        toast.error("Upload failed. Please try again.");
+        if (useLocalMode) {
+          toast.error("Local processing failed. Please try again.");
+        } else {
+          toast.error("Upload failed. Please try again.");
+        }
       }
     }
   };
@@ -300,6 +323,45 @@ const NewAttempt = () => {
                 </ul>
               </div>
 
+              {/* Video Mode Selection */}
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Video Processing Mode</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant={!useLocalMode ? "default" : "outline"}
+                    onClick={() => setUseLocalMode(false)}
+                    className="text-sm h-auto p-3 flex flex-col gap-1"
+                  >
+                    <span className="font-medium">Cloud Storage</span>
+                    <span className="text-xs opacity-80">Upload to Supabase</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={useLocalMode ? "default" : "outline"}
+                    onClick={() => setUseLocalMode(true)}
+                    className="text-sm h-auto p-3 flex flex-col gap-1"
+                  >
+                    <span className="font-medium">🔒 Local Mode</span>
+                    <span className="text-xs opacity-80">Stays on device</span>
+                  </Button>
+                </div>
+                
+                {useLocalMode && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <div className="text-sm text-green-800">
+                      <div className="font-medium mb-1">🔒 Enhanced Security Mode</div>
+                      <ul className="text-xs space-y-1">
+                        <li>• Video never leaves your device</li>
+                        <li>• No cloud storage required</li>
+                        <li>• Complete privacy protection</li>
+                        <li>• Works offline after loading</li>
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-4">
                 <Label htmlFor="video-upload" className="text-sm font-medium">
                   Select Video File
@@ -315,6 +377,7 @@ const NewAttempt = () => {
                 {videoFile && (
                   <div className="text-sm text-green-600 bg-green-50 p-3 rounded-lg">
                     ✅ Video selected: {videoFile.name} ({(videoFile.size / 1024 / 1024).toFixed(1)}MB)
+                    {useLocalMode && <div className="text-xs mt-1">🔒 Will be processed locally</div>}
                   </div>
                 )}
               </div>
@@ -355,7 +418,9 @@ const NewAttempt = () => {
                 <div className="text-xs text-blue-800 space-y-1">
                   <div>Video File: {videoFile ? `${videoFile.name} (${(videoFile.size / 1024 / 1024).toFixed(1)}MB)` : 'None'}</div>
                   <div>Video URL: {videoUrl ? 'Available' : 'None'}</div>
+                  <div>Mode: {useLocalMode ? '🔒 Local' : '☁️ Cloud'}</div>
                   <div>Storage Path: {storagePath || 'None'}</div>
+                  <div>Local ID: {localVideoId || 'None'}</div>
                   <div>Skill: {formData.skill}</div>
                   <div>Auto Scores: {Object.keys(autoScores || {}).length} criteria</div>
                   <div>Rubric Frames: {Object.keys(rubricFrames || {}).length} frames</div>
@@ -398,6 +463,9 @@ const NewAttempt = () => {
                   rubricFrames={rubricFrames}
                   videoUrl={videoUrl}
                   storagePath={storagePath}
+                  useLocalMode={useLocalMode}
+                  videoBlob={videoBlob}
+                  localVideoId={localVideoId}
                 />
               </CardContent>
             </Card>
