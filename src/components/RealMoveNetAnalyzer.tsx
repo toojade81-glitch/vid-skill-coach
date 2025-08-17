@@ -557,6 +557,8 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
     onAnalysisComplete(metrics, scores, confidence, rubricFramesRef.current);
     setIsAnalyzing(false);
     setStatus("Analysis complete");
+    // Brief delay to allow UI to settle before navigation
+    try { setTimeout(() => {}, 50); } catch {}
     toast.success("Analysis complete");
 
     // Prepare JSON export for quick copy
@@ -875,6 +877,15 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         ctx.fillText(`Alignment & Extension: ${alignmentExtensionScore}/3`, 20, y0 + line * 2);
         ctx.fillText(`Follow-Through & Control: ${followThroughSettingScore}/3`, 20, y0 + line * 3);
         ctx.fillText(`Total: ${readyFootworkScore + handShapeContactScore + alignmentExtensionScore + followThroughSettingScore}/12  Grade: ${grade}  Conf: ${Math.round(currentConfidence * 100)}%`, 20, y0 + line * 4);
+      }
+
+      // If video ended, or we have covered enough frames and detected contact, we can finish
+      const total = totalFramesEstimate || Math.max(1, Math.ceil((video.duration || 0) * targetFPS));
+      const enoughCoverage = framesAnalyzed >= Math.max(10, Math.floor(total * 0.6));
+      const haveContact = contactFrameIndexRef.current != null;
+      if ((video.ended || (enoughCoverage && haveContact)) && isAnalyzing) {
+        finishAnalysis();
+        return;
       }
 
       rafRef.current = requestAnimationFrame(tick);
