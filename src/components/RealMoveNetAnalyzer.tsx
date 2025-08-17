@@ -307,25 +307,43 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       const video = videoRef.current ?? document.createElement("video");
       videoRef.current = video;
       video.muted = true;
+      video.setAttribute("muted", "");
       video.playsInline = true;
+      video.setAttribute("playsinline", "");
       video.controls = true;
+      video.preload = "metadata";
       video.onended = handleVideoEnded;
 
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
       const objectUrl = URL.createObjectURL(videoFile);
       objectUrlRef.current = objectUrl;
       video.src = objectUrl;
+      // Ensure the browser starts fetching metadata immediately
+      try { video.load(); } catch {}
 
       await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error("Video metadata timeout")), 10000);
-        video.onloadedmetadata = () => {
+        const timer = setTimeout(() => reject(new Error("Video metadata timeout")), 15000);
+        const onLoaded = () => {
           clearTimeout(timer);
+          cleanup();
           resolve();
         };
-        video.onerror = () => {
+        const onError = (ev: any) => {
           clearTimeout(timer);
+          console.error("❌ Local video load error:", { error: (video as any)?.error, event: ev });
+          cleanup();
           reject(new Error("Failed to load video"));
         };
+        const cleanup = () => {
+          video.removeEventListener("loadedmetadata", onLoaded);
+          video.removeEventListener("loadeddata", onLoaded);
+          video.removeEventListener("canplay", onLoaded);
+          video.removeEventListener("error", onError);
+        };
+        video.addEventListener("loadedmetadata", onLoaded, { once: true });
+        video.addEventListener("loadeddata", onLoaded, { once: true });
+        video.addEventListener("canplay", onLoaded, { once: true });
+        video.addEventListener("error", onError, { once: true });
       });
 
       const canvas = canvasRef.current ?? document.createElement("canvas");
@@ -362,7 +380,11 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       // Start playback and analysis loop
       analyzingStartMsRef.current = performance.now();
       setStatus("Analyzing... (MoveNet)");
-      await video.play();
+      try {
+        await video.play();
+      } catch (err) {
+        console.warn("Autoplay failed, continuing without playback:", err);
+      }
       lastInferMsRef.current = 0;
       rafRef.current = requestAnimationFrame(tick);
     } catch (err: any) {
