@@ -62,7 +62,13 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
       errorMessage: video?.error?.message,
       networkState: video?.networkState
     });
-    setError(`Video playback error: ${video?.error?.message || 'Unknown error'}`);
+    const msg = video?.error?.message || '';
+    const notSupported = /NotSupportedError|MEDIA_ERR_SRC_NOT_SUPPORTED/i.test(msg);
+    setError(
+      notSupported
+        ? "Local video playback error: Format may be unsupported. Please record in MP4 (H.264/AAC) or try a different browser."
+        : `Video playback error: ${msg || 'Unknown error'}`
+    );
     setVideoReady(false);
   };
 

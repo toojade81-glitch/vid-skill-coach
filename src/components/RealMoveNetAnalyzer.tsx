@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import * as tf from "@tensorflow/tfjs";
 import "@tensorflow/tfjs-backend-webgl";
 import * as posedetection from "@tensorflow-models/pose-detection";
+import { isBrowserLikelyToPlay } from "@/lib/videoCompatibility";
 
 interface PoseMetrics {
   frames: number;
@@ -228,6 +229,19 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       toast.error("MoveNet not ready yet");
       return;
     }
+
+    // New: verify local playback support before analysis
+    try {
+      const compat = await isBrowserLikelyToPlay(videoFile);
+      if (!compat.playable) {
+        toast.error(
+          compat.details === "HEVC/H.265 not supported by this browser"
+            ? "Local video playback error: Format may be unsupported (HEVC/H.265). Please record in MP4 (H.264/AAC) or try a different browser."
+            : `Local video playback error: ${compat.details}. Please record in MP4 (H.264/AAC) or try a different browser.`
+        );
+        return;
+      }
+    } catch {}
 
     try {
       // Reset state

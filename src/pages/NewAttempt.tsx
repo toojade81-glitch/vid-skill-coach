@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import RealMoveNetAnalyzer from "@/components/RealMoveNetAnalyzer";
 import ScoreAdjustment from "@/components/ScoreAdjustment";
 import { VideoUploadService } from "@/lib/videoUploadService";
+import { isBrowserLikelyToPlay } from "@/lib/videoCompatibility";
 
 const NewAttempt = () => {
   const navigate = useNavigate();
@@ -40,6 +41,22 @@ const NewAttempt = () => {
       if (!file.type.startsWith('video/')) {
         toast.error("Please select a video file.");
         return;
+      }
+
+      // New: pre-check browser playback compatibility
+      try {
+        const compat = await isBrowserLikelyToPlay(file);
+        console.log("🧪 Playback compatibility:", compat);
+        if (!compat.playable) {
+          toast.error(
+            compat.details === "HEVC/H.265 not supported by this browser"
+              ? "Local video playback error: Format may be unsupported (HEVC/H.265). Please record in MP4 (H.264/AAC) or try a different browser."
+              : `Local video playback error: ${compat.details}. Please record in MP4 (H.264/AAC) or try a different browser.`
+          );
+          return;
+        }
+      } catch (err) {
+        console.warn("Compatibility check failed", err);
       }
       
       setVideoFile(file);
