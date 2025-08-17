@@ -154,18 +154,63 @@ const LocalVideoPlayer = ({ videoBlob, onFrameCapture, className = "", initialTi
       <div className={`bg-destructive/10 border border-destructive/20 rounded-lg p-4 ${className}`}>
         <div className="text-sm text-destructive mb-3">{error}</div>
         
-        {/* Fallback: Basic video element with controls */}
-        <div className="mt-2">
-          <div className="text-xs text-muted-foreground mb-1">Fallback player:</div>
-          <video
-            controls
-            className="w-full h-24 rounded border"
-            playsInline
-            muted
-          >
-            <source src={videoUrl} type={(videoBlob as any)?.type || 'video/mp4'} />
-            Your browser does not support video playback.
-          </video>
+        {/* Enhanced Fallback Player with Scrubbing */}
+        <div className="mt-2 space-y-3">
+          <div className="text-xs text-muted-foreground mb-1">Fallback player with scrubbing:</div>
+          
+          <div className="relative">
+            <video
+              ref={videoRef}
+              className="w-full h-32 object-cover rounded-lg border border-border"
+              onLoadedMetadata={() => {
+                const video = videoRef.current;
+                if (video && video.duration && video.duration > 0) {
+                  setDuration(video.duration);
+                  setVideoReady(true);
+                }
+              }}
+              onTimeUpdate={handleTimeUpdate}
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+              muted
+              playsInline
+              controls={false}
+            >
+              <source src={videoUrl} type={(videoBlob as any)?.type || 'video/mp4'} />
+              Your browser does not support video playback.
+            </video>
+            <canvas ref={canvasRef} className="hidden" />
+            <div className="absolute bottom-2 right-2">
+              <Button
+                onClick={togglePlayPause}
+                size="sm"
+                variant="secondary"
+              >
+                {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+
+          {duration > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
+              </div>
+              <Slider
+                value={[currentTime]}
+                onValueChange={handleSliderChange}
+                max={duration}
+                min={0}
+                step={0.1}
+                className="w-full"
+              />
+            </div>
+          )}
+          
+          <div className="text-xs text-muted-foreground text-center">
+            Fallback mode - Scrub to select the best frame for assessment
+          </div>
         </div>
       </div>
     );
