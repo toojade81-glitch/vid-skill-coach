@@ -4,8 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Progress } from "@/components/ui/progress";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Upload, Copy, Check } from "lucide-react";
+import { ArrowLeft, Upload, Copy, Check, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import RealMoveNetAnalyzer from "@/components/RealMoveNetAnalyzer";
 import ScoreAdjustment from "@/components/ScoreAdjustment";
@@ -32,6 +34,9 @@ const NewAttempt = () => {
   const [rubricFrames, setRubricFrames] = useState<Record<string, string>>({});
   const [capturedFrame, setCapturedFrame] = useState<string>("");
   const [copied, setCopied] = useState(false);
+  const [showCloudWarning, setShowCloudWarning] = useState(false);
+  const [localProgress, setLocalProgress] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -48,44 +53,81 @@ const NewAttempt = () => {
       
       setVideoFile(file);
       
-      try {
-        if (useLocalMode) {
-          const tid = toast.loading("Processing video locally...");
-          
-          // Use local video service
-          const result = await LocalVideoService.uploadVideo(file);
-          
-          setVideoUrl(result.url);
-          setLocalVideoId(result.localId);
-          setVideoBlob(result.blob);
-          
-          toast.dismiss(tid);
+      if (!useLocalMode) {
+        // Show cloud warning before uploading
+        setShowCloudWarning(true);
+        return;
+      }
+      
+      await processVideo(file);
+    }
+  };
+
+  const processVideo = async (file: File) => {
+    try {
+      if (useLocalMode) {
+        setIsProcessing(true);
+        setLocalProgress(0);
+        
+        // Simulate progress for local processing
+        const progressInterval = setInterval(() => {
+          setLocalProgress(prev => {
+            if (prev >= 90) {
+              clearInterval(progressInterval);
+              return prev;
+            }
+            return prev + 10;
+          });
+        }, 200);
+        
+        // Use local video service
+        const result = await LocalVideoService.uploadVideo(file);
+        
+        clearInterval(progressInterval);
+        setLocalProgress(100);
+        
+        setVideoUrl(result.url);
+        setLocalVideoId(result.localId);
+        setVideoBlob(result.blob);
+        
+        setTimeout(() => {
+          setIsProcessing(false);
+          setLocalProgress(0);
           toast.success("Video processed locally!");
           console.log("✅ Local video processed:", result);
-        } else {
-          const tid = toast.loading("Video uploading...");
-          
-          // Upload to Supabase Storage
-          const result = await VideoUploadService.uploadVideo(file);
-          
-          setVideoUrl(result.url);
-          setStoragePath(result.path);
-          
-          toast.dismiss(tid);
-          toast.success("Video uploaded successfully!");
-          console.log("✅ Video uploaded:", result);
-        }
+        }, 500);
+      } else {
+        const tid = toast.loading("Video uploading to cloud...");
         
-        setStep("analyze");
-      } catch (error) {
-        console.error("❌ Upload failed:", error);
-        toast.dismiss();
-        if (useLocalMode) {
-          toast.error("Local processing failed. Please try again.");
-        } else {
-          toast.error("Upload failed. Please try again.");
-        }
+        // Upload to Supabase Storage
+        const result = await VideoUploadService.uploadVideo(file);
+        
+        setVideoUrl(result.url);
+        setStoragePath(result.path);
+        
+        toast.dismiss(tid);
+        toast.success("Video uploaded successfully!");
+        console.log("✅ Video uploaded:", result);
       }
+      
+      setStep("analyze");
+    } catch (error) {
+      console.error("❌ Upload failed:", error);
+      setIsProcessing(false);
+      setLocalProgress(0);
+      toast.dismiss();
+      if (useLocalMode) {
+        toast.error("Local processing failed. Please try again.");
+      } else {
+        toast.error("Upload failed. Please try again.");
+      }
+    }
+  };
+
+  const confirmCloudUpload = async () => {
+    setShowCloudWarning(false);
+    if (videoFile) {
+      await processVideo(videoFile);
     }
   };
 
@@ -374,7 +416,17 @@ const NewAttempt = () => {
                   className="cursor-pointer"
                 />
                 
-                {videoFile && (
+                {isProcessing && useLocalMode && (
+                  <div className="space-y-3">
+                    <div className="text-sm font-medium text-primary">Processing video locally...</div>
+                    <Progress value={localProgress} className="w-full" />
+                    <div className="text-xs text-muted-foreground">
+                      {localProgress < 100 ? `${localProgress}% complete` : "Finalizing..."}
+                    </div>
+                  </div>
+                )}
+                
+                {videoFile && !isProcessing && (
                   <div className="text-sm text-green-600 bg-green-50 p-3 rounded-lg">
                     ✅ Video selected: {videoFile.name} ({(videoFile.size / 1024 / 1024).toFixed(1)}MB)
                     {useLocalMode && <div className="text-xs mt-1">🔒 Will be processed locally</div>}
@@ -508,6 +560,48 @@ const NewAttempt = () => {
           </Button>
         </div>
       </div>
+
+      {/* Cloud Upload Warning Dialog */}
+      <AlertDialog open={showCloudWarning} onOpenChange={setShowCloudWarning}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Cloud Upload Warning
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  You've selected <strong>Cloud Storage</strong> mode. This means your video will be uploaded to our servers for processing.
+                </p>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <h4 className="font-medium text-amber-800 mb-2">What this means:</h4>
+                  <ul className="text-sm text-amber-700 space-y-1">
+                    <li>• Video will be stored on Supabase servers</li>
+                    <li>• Data is encrypted in transit and at rest</li>
+                    <li>• Enables sharing and collaboration features</li>
+                    <li>• Requires internet connection</li>
+                  </ul>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <h4 className="font-medium text-blue-800 mb-2">Alternative:</h4>
+                  <p className="text-sm text-blue-700">
+                    Switch to <strong>🔒 Local Mode</strong> to keep your video completely private on your device.
+                  </p>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowCloudWarning(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmCloudUpload}>
+              Continue with Cloud Upload
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
