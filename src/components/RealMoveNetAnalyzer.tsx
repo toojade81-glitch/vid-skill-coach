@@ -55,39 +55,73 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
   const initializeMoveNet = async () => {
     try {
       console.log("🔧 Initializing MoveNet...");
+      setProgress(10);
       
-      // Check if libraries are loaded
+      // Check if libraries are loaded with retry
+      let retryCount = 0;
+      const maxRetries = 5;
+      
+      while (retryCount < maxRetries && (!window.tf || !window.poseDetection)) {
+        console.log(`⏳ Waiting for libraries... attempt ${retryCount + 1}/${maxRetries}`);
+        setStatus(`Loading MoveNet libraries... (${retryCount + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        retryCount++;
+      }
+      
       if (!window.tf || !window.poseDetection) {
-        setStatus("MoveNet libraries not loaded");
-        console.error("❌ Missing libraries - tf:", !!window.tf, "poseDetection:", !!window.poseDetection);
+        setStatus("MoveNet libraries failed to load - refresh page");
+        console.error("❌ Missing libraries after retries - tf:", !!window.tf, "poseDetection:", !!window.poseDetection);
         return;
       }
 
       console.log("✅ Libraries found - tf:", !!window.tf, "poseDetection:", !!window.poseDetection);
       setStatus("Loading MoveNet model...");
+      setProgress(30);
 
-      // Initialize TensorFlow backend
-      if (!window.tf.getBackend()) {
-        await window.tf.setBackend('webgl');
-        await window.tf.ready();
-      }
+      // Initialize TensorFlow backend with timeout
+      const backendPromise = new Promise(async (resolve, reject) => {
+        try {
+          if (!window.tf.getBackend()) {
+            await window.tf.setBackend('webgl');
+            await window.tf.ready();
+          }
+          resolve(true);
+        } catch (err) {
+          reject(err);
+        }
+      });
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Backend initialization timeout")), 15000);
+      });
+      
+      await Promise.race([backendPromise, timeoutPromise]);
+      setProgress(60);
 
-      // Create MoveNet detector
-      const moveNetDetector = await window.poseDetection.createDetector(
+      // Create MoveNet detector with timeout
+      const detectorPromise = window.poseDetection.createDetector(
         window.poseDetection.SupportedModels.MoveNet,
         {
           modelType: window.poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING
         }
       );
+      
+      const detectorTimeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Detector creation timeout")), 20000);
+      });
+      
+      const moveNetDetector = await Promise.race([detectorPromise, detectorTimeoutPromise]);
 
       setDetector(moveNetDetector);
       setStatus("MoveNet ready");
+      setProgress(100);
       setIsReady(true);
       console.log("✅ MoveNet initialized successfully");
 
     } catch (error) {
       console.error("❌ MoveNet initialization failed:", error);
-      setStatus(`MoveNet initialization failed: ${error.message}`);
+      setStatus(`MoveNet failed: ${error.message} - Try refreshing`);
+      setProgress(0);
       setIsReady(false);
     }
   };
