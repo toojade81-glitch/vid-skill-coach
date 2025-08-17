@@ -149,16 +149,17 @@ const PoseAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: PoseAnal
   };
 
   const generateSimulatedMetrics = (skill: string, target: string): PoseMetrics => {
-    // Generate realistic but simulated metrics based on skill type
+    // Generate more realistic metrics that reflect poor performance for non-volleyball movements
+    // Simulate poor metrics more often to represent reality that most uploads aren't perfect
     const baseMetrics = {
-      kneeFlex: 20 + Math.random() * 15, // 20-35% knee flex
-      elbowLock: Math.random() > 0.3, // 70% chance of good elbow lock
-      wristAboveForehead: skill === "Setting" ? Math.random() > 0.2 : false,
-      contactHeightRelTorso: skill === "Setting" ? 0.85 + Math.random() * 0.1 : 0.4 + Math.random() * 0.2,
-      platformFlatness: skill === "Digging" ? 5 + Math.random() * 20 : 0,
-      extensionSequence: 0.5 + Math.random() * 0.4, // 0.5-0.9 score
-      facingTarget: target === "Center" ? 0.8 + Math.random() * 0.2 : 0.6 + Math.random() * 0.3,
-      stability: 0.6 + Math.random() * 0.3, // 0.6-0.9 stability
+      kneeFlex: 5 + Math.random() * 20, // Often poor knee flex (5-25%)
+      elbowLock: Math.random() > 0.6, // Only 40% chance of good elbow lock  
+      wristAboveForehead: skill === "Setting" ? Math.random() > 0.5 : false, // 50% chance for setting
+      contactHeightRelTorso: skill === "Setting" ? 0.6 + Math.random() * 0.3 : 0.3 + Math.random() * 0.4, // Lower contact height
+      platformFlatness: skill === "Digging" ? 15 + Math.random() * 25 : 0, // Often poor platform (15-40 degrees)
+      extensionSequence: 0.2 + Math.random() * 0.6, // Wide range, often poor (0.2-0.8)
+      facingTarget: Math.random() * 0.8, // Often not facing target well (0-0.8)
+      stability: 0.3 + Math.random() * 0.5, // Often unstable (0.3-0.8)
       contactFrame: Math.floor(Math.random() * 20) + 10 // Frame 10-30
     };
 
@@ -174,17 +175,17 @@ const PoseAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: PoseAnal
   const calculateScores = (metrics: PoseMetrics, skill: string): Record<string, number> => {
     if (skill === "Setting") {
       return {
-        readyFootwork: metrics.kneeFlex >= 15 && metrics.stability >= 0.6 ? (metrics.stability >= 0.8 ? 3 : 2) : (metrics.kneeFlex >= 10 ? 1 : 0),
-        handShapeContact: metrics.wristAboveForehead ? (metrics.contactHeightRelTorso >= 0.9 ? 3 : 2) : (metrics.contactHeightRelTorso >= 0.7 ? 1 : 0),
-        alignmentExtension: metrics.extensionSequence >= 0.7 && metrics.facingTarget >= 0.6 ? 3 : (metrics.extensionSequence >= 0.5 ? 2 : (metrics.extensionSequence >= 0.3 ? 1 : 0)),
-        followThroughControl: metrics.stability >= 0.6 ? (metrics.stability >= 0.8 ? 3 : 2) : (metrics.stability >= 0.4 ? 1 : 0)
+        readyFootwork: metrics.kneeFlex >= 20 && metrics.stability >= 0.7 ? (metrics.stability >= 0.85 ? 3 : 2) : (metrics.kneeFlex >= 15 ? 1 : 0),
+        handShapeContact: metrics.wristAboveForehead && metrics.contactHeightRelTorso >= 0.85 ? (metrics.contactHeightRelTorso >= 0.95 ? 3 : 2) : (metrics.contactHeightRelTorso >= 0.75 ? 1 : 0),
+        alignmentExtension: metrics.extensionSequence >= 0.75 && metrics.facingTarget >= 0.7 ? 3 : (metrics.extensionSequence >= 0.6 ? 2 : (metrics.extensionSequence >= 0.4 ? 1 : 0)),
+        followThroughControl: metrics.stability >= 0.7 ? (metrics.stability >= 0.85 ? 3 : 2) : (metrics.stability >= 0.5 ? 1 : 0)
       };
-    } else { // Digging
+    } else { // Digging  
       return {
-        readyPlatform: metrics.kneeFlex >= 15 && metrics.elbowLock ? (metrics.kneeFlex >= 25 ? 3 : 2) : (metrics.kneeFlex >= 10 ? 1 : 0),
-        contactAngle: metrics.contactHeightRelTorso < 0.6 && metrics.platformFlatness <= 10 ? 3 : (metrics.platformFlatness <= 20 ? 2 : (metrics.platformFlatness <= 30 ? 1 : 0)),
-        legDriveShoulder: metrics.stability >= 0.6 ? (metrics.stability >= 0.8 ? 3 : 2) : (metrics.stability >= 0.4 ? 1 : 0),
-        followThroughControl: metrics.stability >= 0.6 ? (metrics.stability >= 0.8 ? 3 : 2) : (metrics.stability >= 0.4 ? 1 : 0)
+        readyPlatform: metrics.kneeFlex >= 20 && metrics.elbowLock ? (metrics.kneeFlex >= 30 ? 3 : 2) : (metrics.kneeFlex >= 15 ? 1 : 0),
+        contactAngle: metrics.contactHeightRelTorso < 0.5 && metrics.platformFlatness <= 8 ? 3 : (metrics.platformFlatness <= 15 ? 2 : (metrics.platformFlatness <= 25 ? 1 : 0)),
+        legDriveShoulder: metrics.stability >= 0.7 ? (metrics.stability >= 0.85 ? 3 : 2) : (metrics.stability >= 0.5 ? 1 : 0),
+        followThroughControl: metrics.stability >= 0.7 ? (metrics.stability >= 0.85 ? 3 : 2) : (metrics.stability >= 0.5 ? 1 : 0)
       };
     }
   };
