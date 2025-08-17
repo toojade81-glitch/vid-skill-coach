@@ -311,7 +311,7 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       video.playsInline = true;
       video.setAttribute("playsinline", "");
       video.controls = true;
-      video.preload = "metadata";
+      video.preload = "auto";
       video.onended = handleVideoEnded;
 
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);

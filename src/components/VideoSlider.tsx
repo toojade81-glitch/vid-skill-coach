@@ -30,6 +30,14 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
 			return;
 		}
 
+		// Ensure metadata reload for updated sources
+		try {
+			if (videoRef.current) {
+				videoRef.current.preload = 'metadata';
+				videoRef.current.load();
+			}
+		} catch {}
+
 		// Removed HEAD request check which can incorrectly fail with 400 on some CDNs/CORS
 	}, [videoUrl]);
 
@@ -235,7 +243,6 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
 					muted
 					playsInline
 					controls={false}
-					crossOrigin="anonymous"
 				/>
 				<canvas ref={canvasRef} className="hidden" />
 				<Button
