@@ -77,6 +77,27 @@ const SKELETON_CONNECTIONS: Array<[number, number]> = [
 
 const MIN_KP_SCORE = 0.3;
 
+type FrameFeatures = {
+  leftKneeAngle: number | null;
+  rightKneeAngle: number | null;
+  stanceWidthNorm: number | null; // ankle distance / shoulder width
+  faceWidth: number | null; // eye/ear distance or fallback
+  wristSepToFaceNorm: number | null; // wrist distance / faceWidth
+  wristsAboveShoulder: boolean;
+  wristsAboveForehead: boolean;
+  shoulderLevelDevNorm: number | null; // |ls.y - rs.y| / shoulderWidth
+  hipLevelDevNorm: number | null; // |lh.y - rh.y| / shoulderWidth
+  torsoAngleFromHorizontalDeg: number | null; // angle of hip->shoulder center
+  leftElbowAngle: number | null;
+  rightElbowAngle: number | null;
+  noseY: number | null;
+  shoulderCenterY: number | null;
+  lwY: number | null;
+  rwY: number | null;
+  torsoLength: number | null;
+  shoulderWidth: number | null;
+};
+
 function getPointPixels(
   keypoints: posedetection.Keypoint[],
   index: number,
@@ -85,11 +106,9 @@ function getPointPixels(
 ) {
   const kp = keypoints[index];
   if (!kp || typeof kp.x !== "number" || typeof kp.y !== "number") return null;
-  const likelyNormalized = kp.x <= 2 && kp.y <= 2; // heuristic
-  const x = likelyNormalized ? kp.x * width : kp.x;
-  const y = likelyNormalized ? kp.y * height : kp.y;
   const score = typeof kp.score === "number" ? kp.score : 1;
-  return score >= MIN_KP_SCORE ? { x, y, score } : null;
+  // MoveNet returns pixel coordinates already; do not normalize by canvas
+  return score >= MIN_KP_SCORE ? { x: kp.x, y: kp.y, score } : null;
 }
 
 function euclidean(a: { x: number; y: number }, b: { x: number; y: number }) {
@@ -139,8 +158,16 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
   const [legDriveShoulderScore, setLegDriveShoulderScore] = useState(1);
   const [followThroughScore, setFollowThroughScore] = useState(1);
 
+  // Live rubric scores (Setting)
+  const [readyFootworkScore, setReadyFootworkScore] = useState(1);
+  const [handShapeContactScore, setHandShapeContactScore] = useState(1);
+  const [alignmentExtensionScore, setAlignmentExtensionScore] = useState(1);
+  const [followThroughSettingScore, setFollowThroughSettingScore] = useState(1);
+
   const [totalScore, setTotalScore] = useState(4);
   const [grade, setGrade] = useState("D");
+  const [currentConfidence, setCurrentConfidence] = useState(0);
+  const [jsonExport, setJsonExport] = useState("");
 
   // Progress frame counters
   const [framesAnalyzed, setFramesAnalyzed] = useState(0);
@@ -159,6 +186,7 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
   const forearmAnglesAfterRef = useRef<number[]>([]);
   const contactFrameIndexRef = useRef<number | null>(null);
   const rubricFramesRef = useRef<RubricFrames>({});
+  const frameSeriesRef = useRef<FrameFeatures[]>([]);
 
   useEffect(() => {
     // Init TFJS backend and detector once
@@ -211,14 +239,23 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
   }, []);
 
   useEffect(() => {
-    // Update total score + grade live
-    const sum = readyPlatformScore + contactAngleScore + legDriveShoulderScore + followThroughScore;
-    setTotalScore(sum);
-    if (sum >= 10) setGrade("A");
-    else if (sum >= 8) setGrade("B");
-    else if (sum >= 6) setGrade("C");
-    else setGrade("D");
-  }, [readyPlatformScore, contactAngleScore, legDriveShoulderScore, followThroughScore]);
+    // Update total score + grade live for the active skill
+    if (skill === "Digging") {
+      const sum = readyPlatformScore + contactAngleScore + legDriveShoulderScore + followThroughScore;
+      setTotalScore(sum);
+      if (sum >= 10) setGrade("A");
+      else if (sum >= 8) setGrade("B");
+      else if (sum >= 6) setGrade("C");
+      else setGrade("D");
+    } else {
+      const sum = readyFootworkScore + handShapeContactScore + alignmentExtensionScore + followThroughSettingScore;
+      setTotalScore(sum);
+      if (sum >= 10) setGrade("A");
+      else if (sum >= 8) setGrade("B");
+      else if (sum >= 6) setGrade("C");
+      else setGrade("D");
+    }
+  }, [skill, readyPlatformScore, contactAngleScore, legDriveShoulderScore, followThroughScore, readyFootworkScore, handShapeContactScore, alignmentExtensionScore, followThroughSettingScore]);
 
   const startAnalysis = async () => {
     if (!videoFile) {
@@ -254,6 +291,17 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       forearmAnglesAfterRef.current = [];
       contactFrameIndexRef.current = null;
       rubricFramesRef.current = {};
+      frameSeriesRef.current = [];
+      setReadyPlatformScore(1);
+      setContactAngleScore(1);
+      setLegDriveShoulderScore(1);
+      setFollowThroughScore(1);
+      setReadyFootworkScore(1);
+      setHandShapeContactScore(1);
+      setAlignmentExtensionScore(1);
+      setFollowThroughSettingScore(1);
+      setCurrentConfidence(0);
+      setJsonExport("");
 
       // Prepare elements
       const video = videoRef.current ?? document.createElement("video");
@@ -353,18 +401,19 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       : 0;
     const normalizedPeak = clamp(wristSpeedPeak, 0, 1);
     const confidence = clamp(0.5 * detectionRate + 0.5 * normalizedPeak, 0, 1);
+    setCurrentConfidence(confidence);
 
-    const scores: Record<string, number> = {
-      readyPlatform: readyPlatformScore,
-      contactAngle: contactAngleScore,
-      legDriveShoulder: legDriveShoulderScore,
-      followThroughControl: followThroughScore,
-    };
+    if (confidence < 0.4) {
+      toast.message("Low confidence — please re-record.");
+    }
 
-    const metrics: PoseMetrics = {
+    let scores: Record<string, number> = {};
+
+    // Default metrics structure; some fields are reused loosely across skills
+    let metrics: PoseMetrics = {
       frames: total,
       detected_frames: detected,
-      kneeFlex: 0, // not used directly in UI; keeping for compatibility
+      kneeFlex: 0,
       elbowLock: false,
       wristAboveForehead: false,
       contactHeightRelTorso: 0,
@@ -375,10 +424,124 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       contactFrame,
     };
 
+    if (skill === "Digging") {
+      scores = {
+        readyPlatform: readyPlatformScore,
+        contactAngle: contactAngleScore,
+        legDriveShoulder: legDriveShoulderScore,
+        followThroughControl: followThroughScore,
+      };
+    } else {
+      // Compute Setting subscores using pre/contact/post windows
+      const series = frameSeriesRef.current;
+      const N = series.length;
+      const c = clamp(contactFrame, 0, Math.max(0, N - 1));
+      const PRE = Math.max(3, Math.floor(targetFPS * 0.6));
+      const POST = Math.max(4, Math.floor(targetFPS * 0.8));
+      const preStart = Math.max(0, c - PRE);
+      const postEnd = Math.min(N, c + POST);
+      const contactStart = Math.max(0, c - 1);
+      const contactEnd = Math.min(N, c + 2);
+
+      const pre = series.slice(preStart, c);
+      const contactWin = series.slice(contactStart, contactEnd);
+      const post = series.slice(c + 1, postEnd);
+
+      // Ready Footwork & Base
+      const preKneeFrames = pre.filter(f => f.leftKneeAngle != null && f.rightKneeAngle != null);
+      const kneesBentCount = preKneeFrames.filter(f => (f.leftKneeAngle! >= 70 && f.leftKneeAngle! <= 110) && (f.rightKneeAngle! >= 70 && f.rightKneeAngle! <= 110)).length;
+      const kneesBentRatio = preKneeFrames.length ? kneesBentCount / preKneeFrames.length : 0;
+      const preStanceFrames = pre.filter(f => f.stanceWidthNorm != null);
+      const stanceWideCount = preStanceFrames.filter(f => (f.stanceWidthNorm! > 1.0)).length;
+      const stanceWideRatio = preStanceFrames.length ? stanceWideCount / preStanceFrames.length : 0;
+      let rfScore = 1;
+      if (kneesBentRatio >= 0.6 && stanceWideRatio >= 0.6) rfScore = 3;
+      else if (kneesBentRatio >= 0.4 || stanceWideRatio >= 0.4) rfScore = 2;
+      setReadyFootworkScore(rfScore);
+
+      // Hand Shape & Contact Window
+      const contactHas = contactWin.filter(f => f.faceWidth && f.wristSepToFaceNorm != null && f.shoulderCenterY != null).length > 0;
+      const wristsAboveShoulderRatio = contactWin.length ? contactWin.filter(f => f.wristsAboveShoulder).length / contactWin.length : 0;
+      const sepOkRatio = contactWin.length ? contactWin.filter(f => f.faceWidth && f.wristSepToFaceNorm! >= 0.6 && f.wristSepToFaceNorm! <= 1.2).length / contactWin.length : 0;
+      const wristsAboveForeheadRatio = contactWin.length ? contactWin.filter(f => f.wristsAboveForehead).length / contactWin.length : 0;
+      let hsScore = 1;
+      if (contactHas) {
+        const okCount = (wristsAboveShoulderRatio >= 0.6 ? 1 : 0) + (sepOkRatio >= 0.6 ? 1 : 0) + (wristsAboveForeheadRatio >= 0.6 ? 1 : 0);
+        if (okCount >= 3) hsScore = 3;
+        else if (okCount >= 2) hsScore = 2;
+        else hsScore = 1;
+      }
+      setHandShapeContactScore(hsScore);
+
+      // Alignment & Extension
+      // Levelness at contact
+      const levelFrames = contactWin.filter(f => f.shoulderLevelDevNorm != null && f.hipLevelDevNorm != null);
+      const meanShoulderDev = levelFrames.reduce((s, f) => s + (f.shoulderLevelDevNorm || 0), 0) / (levelFrames.length || 1);
+      const meanHipDev = levelFrames.reduce((s, f) => s + (f.hipLevelDevNorm || 0), 0) / (levelFrames.length || 1);
+      let levelnessScore = 1;
+      if (meanShoulderDev < 0.06 && meanHipDev < 0.06) levelnessScore = 3;
+      else if (meanShoulderDev < 0.1 && meanHipDev < 0.1) levelnessScore = 2;
+
+      // Upright alignment at contact
+      const uprightFrames = contactWin.filter(f => f.torsoAngleFromHorizontalDeg != null);
+      const meanTorsoAngle = uprightFrames.reduce((s, f) => s + Math.abs(90 - Math.abs(f.torsoAngleFromHorizontalDeg || 0)), 0) / (uprightFrames.length || 1);
+      let uprightScore = 1;
+      if (meanTorsoAngle <= 12) uprightScore = 3;
+      else if (meanTorsoAngle <= 20) uprightScore = 2;
+
+      // Arm extension delta from pre to post (elbow angle increase)
+      const preElbows = pre.filter(f => f.leftElbowAngle != null && f.rightElbowAngle != null);
+      const postElbows = post.filter(f => f.leftElbowAngle != null && f.rightElbowAngle != null);
+      const preElbowMean = preElbows.length ? preElbows.reduce((s, f) => s + ((f.leftElbowAngle! + f.rightElbowAngle!) / 2), 0) / preElbows.length : 0;
+      const postElbowMean = postElbows.length ? postElbows.reduce((s, f) => s + ((f.leftElbowAngle! + f.rightElbowAngle!) / 2), 0) / postElbows.length : 0;
+      const elbowDelta = postElbowMean - preElbowMean;
+      let extensionScore = 1;
+      if (elbowDelta > 25) extensionScore = 3;
+      else if (elbowDelta > 12) extensionScore = 2;
+
+      const aeScore = clamp(Math.round((levelnessScore + uprightScore + extensionScore) / 3), 1, 3);
+      setAlignmentExtensionScore(aeScore);
+
+      // Follow-Through & Control (post contact): wrists above forehead, low variance
+      const postFrames = post.filter(f => f.lwY != null && f.rwY != null && f.noseY != null && f.torsoLength != null);
+      const aboveForeheadCount = postFrames.filter(f => (f.noseY! - (f.lwY || 0)) / (f.torsoLength || 1) > 0.05 && (f.noseY! - (f.rwY || 0)) / (f.torsoLength || 1) > 0.05).length;
+      const aboveRatio = postFrames.length ? aboveForeheadCount / postFrames.length : 0;
+      // stability via wrist y std normalized by torso length
+      const wristYNorms = postFrames.map(f => ((f.lwY! + f.rwY!) / 2) / (f.torsoLength || 1));
+      const wMean = wristYNorms.reduce((s, v) => s + v, 0) / (wristYNorms.length || 1);
+      const wVar = wristYNorms.reduce((s, v) => s + (v - wMean) * (v - wMean), 0) / (wristYNorms.length || 1);
+      const wStd = Math.sqrt(wVar);
+      let ftScore = 1;
+      if (aboveRatio >= 0.6 && wStd < 0.05) ftScore = 3;
+      else if (aboveRatio >= 0.4 && wStd < 0.08) ftScore = 2;
+      setFollowThroughSettingScore(ftScore);
+
+      scores = {
+        readyFootwork: rfScore,
+        handShapeContact: hsScore,
+        alignmentExtension: aeScore,
+        followThroughControl: ftScore,
+      };
+
+      // Populate a few metrics for export/debug
+      metrics.kneeFlex = Math.round(((preKneeFrames.reduce((s, f) => s + (f.leftKneeAngle || 0), 0) / (preKneeFrames.length || 1)) + (preKneeFrames.reduce((s, f) => s + (f.rightKneeAngle || 0), 0) / (preKneeFrames.length || 1))) / 2);
+      metrics.wristAboveForehead = aboveRatio >= 0.5;
+      metrics.contactHeightRelTorso = contactWin.length ? (contactWin.reduce((s, f) => s + (((f.noseY || 0) - ((f.lwY || 0) + (f.rwY || 0)) / 2) / ((f.torsoLength || 1))), 0) / contactWin.length) : 0;
+      metrics.platformFlatness = 0; // not used here
+      metrics.extensionSequence = elbowDelta;
+      metrics.stability = wStd;
+    }
+
     onAnalysisComplete(metrics, scores, confidence, rubricFramesRef.current);
     setIsAnalyzing(false);
     setStatus("Analysis complete");
     toast.success("Analysis complete");
+
+    // Prepare JSON export for quick copy
+    try {
+      const exportObj = { scores, metrics, grade, confidence };
+      setJsonExport(JSON.stringify(exportObj, null, 2));
+    } catch {}
   };
 
   const tick = async () => {
@@ -425,6 +588,11 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         const rk = p(KP.rightKnee);
         const la = p(KP.leftAnkle);
         const ra = p(KP.rightAnkle);
+        const nose = p(KP.nose);
+        const lEye = p(KP.leftEye);
+        const rEye = p(KP.rightEye);
+        const lEar = p(KP.leftEar);
+        const rEar = p(KP.rightEar);
 
         const haveTorso = ls && rs && lh && rh;
         const haveArms = le && re && lw && rw;
@@ -452,6 +620,17 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
             }
           }
           ctx.stroke();
+
+          // Draw keypoints
+          ctx.fillStyle = "#00ff99";
+          for (let i = 0; i <= 16; i++) {
+            const kp = p(i);
+            if (kp) {
+              ctx.beginPath();
+              ctx.arc(kp.x, kp.y, 3, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
 
           // Update progress
           setFramesAnalyzed((prev) => prev + 1);
@@ -578,15 +757,86 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
             }
           }
 
+          // Contact detection also for Setting (wrist velocity spike)
+          if (skill === "Setting" && haveArms) {
+            const prevKps = lastKPRef.current;
+            if (prevKps && prevKps.length === kps.length) {
+              const prevLW = prevKps[KP.leftWrist];
+              const prevRW = prevKps[KP.rightWrist];
+              if (lw && rw && prevLW && prevRW) {
+                const lwMove = euclidean(lw, prevLW) / normBase;
+                const rwMove = euclidean(rw, prevRW) / normBase;
+                const avgMove = (lwMove + rwMove) / 2;
+                wristSpeedSeriesRef.current.push(avgMove);
+                const spike = avgMove > 0.28;
+                if (spike && contactFrameIndexRef.current == null) {
+                  contactFrameIndexRef.current = framesAnalyzed;
+                }
+              }
+            }
+          }
+
           // Update last keypoints for speed calc (store pixel coords by index)
           lastKPRef.current = kps.map((kp) => ({ x: kp.x, y: kp.y }));
+
+          // Frame feature capture for Setting analysis
+          if (skill === "Setting") {
+            const shoulderCenterY = (ls.y + rs.y) / 2;
+            let faceWidth: number | null = null;
+            if (lEye && rEye) faceWidth = euclidean(lEye, rEye);
+            else if (lEar && rEar) faceWidth = euclidean(lEar, rEar);
+            else if (shoulderWidth > 0) faceWidth = shoulderWidth * 0.35; // fallback
+
+            const stanceWidth = la && ra ? euclidean(la, ra) : null;
+            const stanceWidthNorm = stanceWidth && shoulderWidth ? stanceWidth / shoulderWidth : null;
+
+            const leftKneeAngle = haveLegs ? angleABC(lh!, lk!, la!) : null;
+            const rightKneeAngle = haveLegs ? angleABC(rh!, rk!, ra!) : null;
+
+            const leftElbowAngle = haveArms ? angleABC(ls!, le!, lw!) : null;
+            const rightElbowAngle = haveArms ? angleABC(rs!, re!, rw!) : null;
+
+            const wristSep = lw && rw ? euclidean(lw, rw) : null;
+            const wristSepToFaceNorm = wristSep && faceWidth ? wristSep / faceWidth : null;
+
+            const wristsAboveShoulder = !!(lw && rw && shoulderCenterY && lw.y < shoulderCenterY && rw.y < shoulderCenterY);
+            const wristsAboveForehead = !!(lw && rw && nose && torsoLength && (nose.y - lw.y) / (torsoLength || 1) > 0.05 && (nose.y - rw.y) / (torsoLength || 1) > 0.05);
+
+            const shoulderLevelDevNorm = shoulderWidth ? Math.abs(ls.y - rs.y) / shoulderWidth : null;
+            const hipLevelDevNorm = shoulderWidth ? Math.abs(lh!.y - rh!.y) / shoulderWidth : null;
+
+            const shoulderCenter = { x: (ls.x + rs.x) / 2, y: (ls.y + rs.y) / 2 };
+            const hipCenter = { x: (lh!.x + rh!.x) / 2, y: (lh!.y + rh!.y) / 2 };
+            const torsoAngleFromHorizontalDeg = lineAngleDegrees(hipCenter, shoulderCenter);
+
+            frameSeriesRef.current.push({
+              leftKneeAngle,
+              rightKneeAngle,
+              stanceWidthNorm,
+              faceWidth,
+              wristSepToFaceNorm,
+              wristsAboveShoulder,
+              wristsAboveForehead,
+              shoulderLevelDevNorm,
+              hipLevelDevNorm,
+              torsoAngleFromHorizontalDeg,
+              leftElbowAngle,
+              rightElbowAngle,
+              noseY: nose ? nose.y : null,
+              shoulderCenterY,
+              lwY: lw ? lw.y : null,
+              rwY: rw ? rw.y : null,
+              torsoLength,
+              shoulderWidth,
+            });
+          }
         }
 
       }
 
       // Overlay text (scores)
       ctx.fillStyle = "rgba(0,0,0,0.5)";
-      ctx.fillRect(10, 10, 260, 90);
+      ctx.fillRect(10, 10, 320, 110);
       ctx.fillStyle = "#ffffff";
       ctx.font = "14px sans-serif";
       const y0 = 30;
@@ -596,6 +846,13 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         ctx.fillText(`Contact & Angle: ${contactAngleScore}/3`, 20, y0 + line);
         ctx.fillText(`Leg Drive & Shoulder: ${legDriveShoulderScore}/3`, 20, y0 + line * 2);
         ctx.fillText(`Follow-Through: ${followThroughScore}/3`, 20, y0 + line * 3);
+        ctx.fillText(`Total: ${readyPlatformScore + contactAngleScore + legDriveShoulderScore + followThroughScore}/12  Grade: ${grade}`, 20, y0 + line * 4);
+      } else {
+        ctx.fillText(`Ready Footwork & Base: ${readyFootworkScore}/3`, 20, y0);
+        ctx.fillText(`Hand Shape & Window: ${handShapeContactScore}/3`, 20, y0 + line);
+        ctx.fillText(`Alignment & Extension: ${alignmentExtensionScore}/3`, 20, y0 + line * 2);
+        ctx.fillText(`Follow-Through & Control: ${followThroughSettingScore}/3`, 20, y0 + line * 3);
+        ctx.fillText(`Total: ${readyFootworkScore + handShapeContactScore + alignmentExtensionScore + followThroughSettingScore}/12  Grade: ${grade}  Conf: ${Math.round(currentConfidence * 100)}%`, 20, y0 + line * 4);
       }
 
       rafRef.current = requestAnimationFrame(tick);
@@ -672,7 +929,28 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
           </div>
         )}
 
-        {skill === "Digging" && (
+        {skill === "Setting" && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-lg border p-3">
+              <p className="text-sm font-medium">Ready Footwork & Base</p>
+              <p className="text-2xl font-bold">{readyFootworkScore}/3</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-sm font-medium">Hand Shape & Contact Window</p>
+              <p className="text-2xl font-bold">{handShapeContactScore}/3</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-sm font-medium">Alignment & Extension</p>
+              <p className="text-2xl font-bold">{alignmentExtensionScore}/3</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-sm font-medium">Follow-Through & Control</p>
+              <p className="text-2xl font-bold">{followThroughSettingScore}/3</p>
+            </div>
+          </div>
+        )}
+
+        {(skill === "Digging") && (
           <div className="rounded-lg border p-4 bg-muted/50">
             <div className="flex items-center justify-between">
               <div>
@@ -684,6 +962,29 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
                 <p className="text-3xl font-bold">{grade}</p>
               </div>
             </div>
+          </div>
+        )}
+
+        {(skill === "Setting") && (
+          <div className="rounded-lg border p-4 bg-muted/50">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Score</p>
+                <p className="text-3xl font-bold">{totalScore}/12</p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-muted-foreground">Grade</p>
+                <p className="text-3xl font-bold">{grade}</p>
+                <p className="text-xs text-muted-foreground">Confidence: {Math.round(currentConfidence * 100)}%</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!isAnalyzing && jsonExport && (
+          <div className="rounded-lg border p-3 bg-muted/30">
+            <p className="text-sm font-medium mb-2">JSON Export</p>
+            <pre className="text-xs overflow-auto whitespace-pre-wrap">{jsonExport}</pre>
           </div>
         )}
 
