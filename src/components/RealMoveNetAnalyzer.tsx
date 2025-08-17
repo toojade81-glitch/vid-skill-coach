@@ -91,6 +91,38 @@ function getPointPixels(
   return score >= MIN_KP_SCORE ? { x, y, score } : null;
 }
 
+function browserCanLikelyPlay(file: File, videoEl: HTMLVideoElement): boolean {
+  const name = file.name || "";
+  const ext = (name.split(".").pop() || "").toLowerCase();
+  const mime = (file.type || "").toLowerCase();
+  const canMp4 = videoEl.canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"') || videoEl.canPlayType('video/mp4');
+  const canWebm = videoEl.canPlayType('video/webm; codecs="vp9, opus"') || videoEl.canPlayType('video/webm; codecs="vp8, vorbis"') || videoEl.canPlayType('video/webm');
+  const canMov = videoEl.canPlayType('video/quicktime');
+
+  if (mime.includes('mp4') || ext === 'mp4') return canMp4 !== '';
+  if (mime.includes('webm') || ext === 'webm') return canWebm !== '';
+  if (mime.includes('quicktime') || ext === 'mov') {
+    // canPlayType often returns '' for QuickTime even if underlying codecs are supported.
+    // We'll allow and rely on runtime metadata/play test.
+    return true;
+  }
+  // Unknown types: allow and rely on runtime test
+  return true;
+}
+
+async function safePlay(video: HTMLVideoElement): Promise<void> {
+  try {
+    const p = video.play();
+    if (p && typeof (p as Promise<void>).then === 'function') await p;
+  } catch (err) {
+    throw err;
+  }
+}
+
+function showUnsupportedVideoToast() {
+  toast.error("Local video playback error: Format may be unsupported. Please record in MP4 (H.264/AAC) or try a different browser.");
+}
+
 function euclidean(a: { x: number; y: number }, b: { x: number; y: number }) {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
@@ -247,29 +279,59 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       video.muted = true;
       video.playsInline = true;
       video.controls = true;
+      video.preload = "auto";
+      video.crossOrigin = "anonymous";
       video.onended = handleVideoEnded;
+
+      // Preflight: basic codec support
+      if (!browserCanLikelyPlay(videoFile, video)) {
+        setIsAnalyzing(false);
+        setStatus("Unsupported video format");
+        showUnsupportedVideoToast();
+        return;
+      }
 
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
       const objectUrl = URL.createObjectURL(videoFile);
       objectUrlRef.current = objectUrl;
       video.src = objectUrl;
+      video.load();
 
       await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error("Video metadata timeout")), 10000);
+        const timeout = setTimeout(() => reject(new Error("Video metadata timeout")), 10000);
         video.onloadedmetadata = () => {
-          clearTimeout(timer);
+          clearTimeout(timeout);
           resolve();
         };
         video.onerror = () => {
-          clearTimeout(timer);
-          reject(new Error("Failed to load video"));
+          clearTimeout(timeout);
+          reject(new Error("Video metadata error"));
+        };
+        video.onstalled = () => {
+          // let it continue; if it never loads we hit timeout
+        };
+        video.onabort = () => {
+          // ignore; user did not abort here
         };
       });
 
       const canvas = canvasRef.current ?? document.createElement("canvas");
       canvasRef.current = canvas;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+
+      // Decode test: attempt a short play/pause to verify browser can decode frames
+      try {
+        await safePlay(video);
+        // Give decoder a tick
+        await new Promise((r) => setTimeout(r, 100));
+        video.pause();
+      } catch (e) {
+        setIsAnalyzing(false);
+        setStatus("Playback failed");
+        showUnsupportedVideoToast();
+        return;
+      }
 
       // Estimate total frames for progress
       const estimatedTotal = Math.max(1, Math.ceil((video.duration || 0) * targetFPS));
@@ -297,17 +359,30 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         }
       } catch {}
 
-      // Start playback and analysis loop
+      // Start playback and analysis loop (should succeed after decode test)
       analyzingStartMsRef.current = performance.now();
       setStatus("Analyzing... (MoveNet)");
-      await video.play();
+      try {
+        await safePlay(video);
+      } catch (e) {
+        setIsAnalyzing(false);
+        setStatus("Playback blocked");
+        showUnsupportedVideoToast();
+        return;
+      }
       lastInferMsRef.current = 0;
       rafRef.current = requestAnimationFrame(tick);
     } catch (err: any) {
       console.error(err);
       setIsAnalyzing(false);
-      setStatus(`Error: ${err?.message || err}`);
-      toast.error("Failed to start analysis");
+      const msg = (err?.message || "").toLowerCase();
+      if (msg.includes("metadata") || msg.includes("decode") || msg.includes("playback")) {
+        showUnsupportedVideoToast();
+        setStatus("Unsupported or unplayable video");
+      } else {
+        setStatus(`Error: ${err?.message || err}`);
+        toast.error("Failed to start analysis");
+      }
     }
   };
 
