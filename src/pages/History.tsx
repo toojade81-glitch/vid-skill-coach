@@ -13,7 +13,19 @@ interface AttemptData {
   notes: string;
   autoScores: Record<string, number>;
   finalScores: Record<string, number>;
-  metrics: any;
+  metrics: {
+    frames?: number;
+    detected_frames?: number;
+    kneeFlex?: number;
+    elbowLock?: boolean;
+    wristAboveForehead?: boolean;
+    contactHeightRelTorso?: number;
+    platformFlatness?: number;
+    extensionSequence?: number;
+    facingTarget?: number;
+    stability?: number;
+    contactFrame?: number;
+  } | null;
   confidence: number;
   rubricFrames?: Record<string, string>;
 }

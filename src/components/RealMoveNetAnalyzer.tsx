@@ -177,7 +177,7 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
           created = await posedetection.createDetector(
             posedetection.SupportedModels.MoveNet,
             {
-              modelType: (posedetection as any).movenet.modelType.SINGLEPOSE_THUNDER,
+              modelType: (posedetection as unknown as { movenet: { modelType: { SINGLEPOSE_THUNDER: string } } }).movenet.modelType.SINGLEPOSE_THUNDER,
               enableSmoothing: true,
             } as posedetection.MoveNetModelConfig
           );
@@ -186,7 +186,7 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
           created = await posedetection.createDetector(
             posedetection.SupportedModels.MoveNet,
             {
-              modelType: (posedetection as any).movenet.modelType.SINGLEPOSE_LIGHTNING,
+              modelType: (posedetection as unknown as { movenet: { modelType: { SINGLEPOSE_LIGHTNING: string } } }).movenet.modelType.SINGLEPOSE_LIGHTNING,
               enableSmoothing: true,
             } as posedetection.MoveNetModelConfig
           );
@@ -195,9 +195,9 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
 
         setDetector(created);
         setStatus("MoveNet ready. Upload a video to begin.");
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error(err);
-        setStatus(`Initialization failed: ${err?.message || err}`);
+        setStatus(`Initialization failed: ${err instanceof Error ? err.message : String(err)}`);
         toast.error("Failed to initialize MoveNet");
       }
     })();
@@ -205,7 +205,8 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-      if (detector && (detector as any).dispose) (detector as any).dispose();
+      const anyDetector = detector as unknown as { dispose?: () => void } | null;
+      if (anyDetector && typeof anyDetector.dispose === "function") anyDetector.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -241,7 +242,10 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         );
         return;
       }
-    } catch {}
+    } catch {
+      // ignore compatibility check errors, proceed to attempt playback
+      void 0;
+    }
 
     try {
       // Reset state
@@ -295,21 +299,27 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
         await detector.estimatePoses(video, { maxPoses: 1, flipHorizontal: false });
         await detector.estimatePoses(video, { maxPoses: 1, flipHorizontal: false });
         const warmAvg = (performance.now() - warmStart) / 2;
-        if ((detector as any)?.modelType === (posedetection as any).movenet.modelType.SINGLEPOSE_THUNDER && warmAvg > 100) {
+        const moveNetModelType = (posedetection as unknown as { movenet: { modelType: { SINGLEPOSE_THUNDER: string; SINGLEPOSE_LIGHTNING: string } } }).movenet.modelType;
+        const detectorModelType = (detector as unknown as { modelType?: string })?.modelType;
+        if (detectorModelType === moveNetModelType.SINGLEPOSE_THUNDER && warmAvg > 100) {
           // Recreate as Lightning
           setStatus("Switching to Lightning for smoother performance...");
           const lightning = await posedetection.createDetector(
             posedetection.SupportedModels.MoveNet,
             {
-              modelType: (posedetection as any).movenet.modelType.SINGLEPOSE_LIGHTNING,
+              modelType: moveNetModelType.SINGLEPOSE_LIGHTNING,
               enableSmoothing: true,
             } as posedetection.MoveNetModelConfig
           );
-          if ((detector as any).dispose) (detector as any).dispose();
+          const anyDetector = detector as unknown as { dispose?: () => void } | null;
+          if (anyDetector && typeof anyDetector.dispose === "function") anyDetector.dispose();
           setDetector(lightning);
           toast.message("Using MoveNet Lightning");
         }
-      } catch {}
+      } catch {
+        // warmup failure is non-fatal; continue with current detector
+        void 0;
+      }
 
       // Start playback and analysis loop
       analyzingStartMsRef.current = performance.now();
@@ -317,10 +327,10 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveN
       await video.play();
       lastInferMsRef.current = 0;
       rafRef.current = requestAnimationFrame(tick);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setIsAnalyzing(false);
-      setStatus(`Error: ${err?.message || err}`);
+      setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
       toast.error("Failed to start analysis");
     }
   };

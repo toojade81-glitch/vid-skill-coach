@@ -12,6 +12,20 @@ import ScoreAdjustment from "@/components/ScoreAdjustment";
 import { VideoUploadService } from "@/lib/videoUploadService";
 import { isBrowserLikelyToPlay } from "@/lib/videoCompatibility";
 
+type AttemptPoseMetrics = {
+  frames?: number;
+  detected_frames?: number;
+  kneeFlex?: number;
+  elbowLock?: boolean;
+  wristAboveForehead?: boolean;
+  contactHeightRelTorso?: number;
+  platformFlatness?: number;
+  extensionSequence?: number;
+  facingTarget?: number;
+  stability?: number;
+  contactFrame?: number;
+};
+
 const NewAttempt = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
@@ -24,7 +38,7 @@ const NewAttempt = () => {
   const [step, setStep] = useState<"form" | "analyze" | "review">("form");
   const [autoScores, setAutoScores] = useState<Record<string, number>>({});
   const [finalScores, setFinalScores] = useState<Record<string, number>>({});
-  const [metrics, setMetrics] = useState<any>(null);
+  const [metrics, setMetrics] = useState<AttemptPoseMetrics | null>(null);
   const [confidence, setConfidence] = useState(0);
   const [rubricFrames, setRubricFrames] = useState<Record<string, string>>({});
   const [capturedFrame, setCapturedFrame] = useState<string>("");
@@ -84,7 +98,7 @@ const NewAttempt = () => {
   };
 
   const handleAnalysisComplete = (
-    analysisMetrics: any,
+    analysisMetrics: AttemptPoseMetrics,
     scores: Record<string, number>,
     conf: number,
     frames: Record<string, string>

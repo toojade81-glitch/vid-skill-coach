@@ -54,7 +54,7 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
     }
   };
 
-  const handleVideoError = (e: any) => {
+  const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
     const video = videoRef.current;
     console.error("❌ Video error:", {
       error: video?.error,
@@ -63,7 +63,8 @@ const VideoSlider = ({ videoUrl, onFrameCapture, className = "", initialTime = 0
       networkState: video?.networkState
     });
     const msg = video?.error?.message || '';
-    const notSupported = /NotSupportedError|MEDIA_ERR_SRC_NOT_SUPPORTED/i.test(msg);
+    const code = video?.error?.code;
+    const notSupported = code === 4 || code === 3 || /NotSupportedError|MEDIA_ERR_SRC_NOT_SUPPORTED/i.test(msg);
     setError(
       notSupported
         ? "Local video playback error: Format may be unsupported. Please record in MP4 (H.264/AAC) or try a different browser."

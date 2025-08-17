@@ -143,10 +143,11 @@ export async function isBrowserLikelyToPlay(file: File): Promise<VideoCompatibil
       detectedAudioCodec: audioCodec,
       container
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     return {
       playable: true,
-      details: `Compatibility check failed: ${err?.message || err}`
+      details: `Compatibility check failed: ${message}`
     };
   }
 }
