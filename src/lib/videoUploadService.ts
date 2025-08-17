@@ -23,7 +23,6 @@ export class VideoUploadService {
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('pe-videos')
         .upload(storagePath, file, {
-          contentType: file.type || 'application/octet-stream',
           cacheControl: '3600',
           upsert: false
         });
@@ -35,27 +34,16 @@ export class VideoUploadService {
 
       console.log("✅ Upload successful:", uploadData);
 
-      // Get public URL (may not be accessible if bucket is not public)
+      // Get public URL
       const { data: urlData } = supabase.storage
         .from('pe-videos')
         .getPublicUrl(storagePath);
 
-      // Also create a signed URL for reliable playback when bucket is private
-      const { data: signedData, error: signedError } = await supabase.storage
-        .from('pe-videos')
-        .createSignedUrl(storagePath, 60 * 60 * 24 * 7); // 7 days
-
-      if (signedError) {
-        console.warn("⚠️ Failed to create signed URL:", signedError);
+      if (!urlData?.publicUrl) {
+        throw new Error("Failed to get public URL");
       }
 
-      const playableUrl = signedData?.signedUrl || urlData.publicUrl;
-
-      if (!playableUrl) {
-        throw new Error("Failed to get a playable URL");
-      }
-
-      console.log("🔗 Playback URL generated:", playableUrl);
+      console.log("🔗 Public URL generated:", urlData.publicUrl);
 
       // Save upload metadata to database
       const { data: dbData, error: dbError } = await supabase
@@ -77,7 +65,7 @@ export class VideoUploadService {
       }
 
       return {
-        url: playableUrl,
+        url: urlData.publicUrl,
         path: storagePath,
         uploadId: dbData?.id || ''
       };
@@ -89,15 +77,6 @@ export class VideoUploadService {
   }
 
   static async getVideoUrl(path: string): Promise<string> {
-    // Prefer a signed URL for private buckets
-    const { data: signedData, error: signedError } = await supabase.storage
-      .from('pe-videos')
-      .createSignedUrl(path, 60 * 60 * 24 * 7); // 7 days
-
-    if (!signedError && signedData?.signedUrl) {
-      return signedData.signedUrl;
-    }
-
     const { data } = supabase.storage
       .from('pe-videos')
       .getPublicUrl(path);

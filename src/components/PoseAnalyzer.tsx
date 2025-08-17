@@ -72,25 +72,37 @@ const PoseAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: PoseAnal
       
       // Set up video
       console.log("📂 Creating object URL for video...");
+      video.preload = 'metadata';
       video.src = URL.createObjectURL(videoFile);
+      try { video.load(); } catch {}
       
       console.log("⏳ Waiting for video metadata...");
       await new Promise((resolve, reject) => {
-        video.onloadedmetadata = () => {
-          console.log("✅ Video metadata loaded");
-          console.log("📊 Video dimensions:", video.videoWidth, "x", video.videoHeight);
-          console.log("⏱️ Video duration:", video.duration, "seconds");
+        const onLoaded = () => {
+          console.log("✅ Video metadata/data loaded");
+          cleanup();
           resolve(undefined);
         };
-        video.onerror = (e) => {
+        const onError = (e: any) => {
           console.error("❌ Video loading error:", e);
+          cleanup();
           reject(new Error("Failed to load video"));
         };
-        
-        // Timeout after 10 seconds
-        setTimeout(() => {
+        const cleanup = () => {
+          clearTimeout(timer);
+          video.removeEventListener('loadedmetadata', onLoaded);
+          video.removeEventListener('loadeddata', onLoaded);
+          video.removeEventListener('canplay', onLoaded);
+          video.removeEventListener('error', onError);
+        };
+        const timer = setTimeout(() => {
+          cleanup();
           reject(new Error("Video loading timeout"));
-        }, 10000);
+        }, 15000);
+        video.addEventListener('loadedmetadata', onLoaded, { once: true });
+        video.addEventListener('loadeddata', onLoaded, { once: true });
+        video.addEventListener('canplay', onLoaded, { once: true });
+        video.addEventListener('error', onError, { once: true });
       });
 
       // Simulate analysis progress
@@ -108,19 +120,15 @@ const PoseAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: PoseAnal
       video.currentTime = captureTime;
       
       await new Promise((resolve, reject) => {
-        video.onseeked = () => {
-          console.log("✅ Video seeked successfully");
-          resolve(undefined);
+        const timer = setTimeout(() => reject(new Error("Video seek timeout")), 5000);
+        const onSeeked = () => { clearTimeout(timer); cleanup(); resolve(undefined); };
+        const onError = (e: any) => { clearTimeout(timer); cleanup(); reject(new Error("Failed to seek video")); };
+        const cleanup = () => {
+          video.removeEventListener('seeked', onSeeked);
+          video.removeEventListener('error', onError);
         };
-        video.onerror = (e) => {
-          console.error("❌ Video seek error:", e);
-          reject(new Error("Failed to seek video"));
-        };
-        
-        // Timeout after 5 seconds
-        setTimeout(() => {
-          reject(new Error("Video seek timeout"));
-        }, 5000);
+        video.addEventListener('seeked', onSeeked, { once: true });
+        video.addEventListener('error', onError, { once: true });
       });
 
       console.log("📸 Capturing video frame...");
@@ -139,7 +147,7 @@ const PoseAnalyzer = ({ videoFile, skill, target, onAnalysisComplete }: PoseAnal
       console.log("📊 Analysis complete:", { metrics, scores, confidence });
       onAnalysisComplete(metrics, scores, confidence, capturedFrame);
       toast.success("Analysis complete!");
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ Analysis failed:", error);
       toast.error(`Analysis failed: ${error.message}`);
     } finally {
