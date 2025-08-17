@@ -1,7 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
+import * as tf from "@tensorflow/tfjs";
+import "@tensorflow/tfjs-backend-webgl";
+import * as posedetection from "@tensorflow-models/pose-detection";
 
 interface PoseMetrics {
   frames: number;
@@ -18,732 +21,736 @@ interface PoseMetrics {
 }
 
 interface RubricFrames {
-  readyFootwork?: string;
-  handShapeContact?: string;
-  alignmentExtension?: string;
-  followThroughControl?: string;
   readyPlatform?: string;
   contactAngle?: string;
   legDriveShoulder?: string;
+  followThroughControl?: string;
 }
 
 interface RealMoveNetAnalyzerProps {
   videoFile: File | null;
   skill: "Setting" | "Digging";
-  onAnalysisComplete: (metrics: PoseMetrics, scores: Record<string, number>, confidence: number, rubricFrames: RubricFrames) => void;
+  onAnalysisComplete: (
+    metrics: PoseMetrics,
+    scores: Record<string, number>,
+    confidence: number,
+    rubricFrames: RubricFrames
+  ) => void;
 }
 
-// Global types for TensorFlow.js
-declare global {
-  interface Window {
-    tf: any;
-    poseDetection: any;
+// MoveNet official keypoint indices
+const KP = {
+  nose: 0,
+  leftEye: 1,
+  rightEye: 2,
+  leftEar: 3,
+  rightEar: 4,
+  leftShoulder: 5,
+  rightShoulder: 6,
+  leftElbow: 7,
+  rightElbow: 8,
+  leftWrist: 9,
+  rightWrist: 10,
+  leftHip: 11,
+  rightHip: 12,
+  leftKnee: 13,
+  rightKnee: 14,
+  leftAnkle: 15,
+  rightAnkle: 16,
+} as const;
+
+const SKELETON_CONNECTIONS: Array<[number, number]> = [
+  [KP.leftShoulder, KP.rightShoulder],
+  [KP.leftShoulder, KP.leftElbow],
+  [KP.leftElbow, KP.leftWrist],
+  [KP.rightShoulder, KP.rightElbow],
+  [KP.rightElbow, KP.rightWrist],
+  [KP.leftShoulder, KP.leftHip],
+  [KP.rightShoulder, KP.rightHip],
+  [KP.leftHip, KP.rightHip],
+  [KP.leftHip, KP.leftKnee],
+  [KP.leftKnee, KP.leftAnkle],
+  [KP.rightHip, KP.rightKnee],
+  [KP.rightKnee, KP.rightAnkle],
+];
+
+const MIN_KP_SCORE = 0.3;
+
+function getPointPixels(
+  keypoints: posedetection.Keypoint[],
+  index: number,
+  width: number,
+  height: number
+) {
+  const kp = keypoints[index];
+  if (!kp || typeof kp.x !== "number" || typeof kp.y !== "number") return null;
+  const likelyNormalized = kp.x <= 2 && kp.y <= 2; // heuristic
+  const x = likelyNormalized ? kp.x * width : kp.x;
+  const y = likelyNormalized ? kp.y * height : kp.y;
+  const score = typeof kp.score === "number" ? kp.score : 1;
+  return score >= MIN_KP_SCORE ? { x, y, score } : null;
+}
+
+function browserCanLikelyPlay(file: File, videoEl: HTMLVideoElement): boolean {
+  const name = file.name || "";
+  const ext = (name.split(".").pop() || "").toLowerCase();
+  const mime = (file.type || "").toLowerCase();
+  const canMp4 = videoEl.canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"') || videoEl.canPlayType('video/mp4');
+  const canWebm = videoEl.canPlayType('video/webm; codecs="vp9, opus"') || videoEl.canPlayType('video/webm; codecs="vp8, vorbis"') || videoEl.canPlayType('video/webm');
+  const canMov = videoEl.canPlayType('video/quicktime');
+
+  if (mime.includes('mp4') || ext === 'mp4') return canMp4 !== '';
+  if (mime.includes('webm') || ext === 'webm') return canWebm !== '';
+  if (mime.includes('quicktime') || ext === 'mov') {
+    // canPlayType often returns '' for QuickTime even if underlying codecs are supported.
+    // We'll allow and rely on runtime metadata/play test.
+    return true;
+  }
+  // Unknown types: allow and rely on runtime test
+  return true;
+}
+
+async function safePlay(video: HTMLVideoElement): Promise<void> {
+  try {
+    const p = video.play();
+    if (p && typeof (p as Promise<void>).then === 'function') await p;
+  } catch (err) {
+    throw err;
   }
 }
 
+function showUnsupportedVideoToast() {
+  toast.error("Local video playback error: Format may be unsupported. Please record in MP4 (H.264/AAC) or try a different browser.");
+}
+
+function euclidean(a: { x: number; y: number }, b: { x: number; y: number }) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.hypot(dx, dy);
+}
+
+function angleABC(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) {
+  // angle at b between BA and BC in degrees
+  const v1x = a.x - b.x;
+  const v1y = a.y - b.y;
+  const v2x = c.x - b.x;
+  const v2y = c.y - b.y;
+  const dot = v1x * v2x + v1y * v2y;
+  const mag1 = Math.hypot(v1x, v1y);
+  const mag2 = Math.hypot(v2x, v2y);
+  if (mag1 === 0 || mag2 === 0) return 0;
+  const cos = Math.min(1, Math.max(-1, dot / (mag1 * mag2)));
+  return (Math.acos(cos) * 180) / Math.PI;
+}
+
+function lineAngleDegrees(from: { x: number; y: number }, to: { x: number; y: number }) {
+  // 0 deg = rightwards, positive CCW; screen y increases downward, so upward slopes are negative angles
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  return (Math.atan2(dy, dx) * 180) / Math.PI;
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
 const RealMoveNetAnalyzer = ({ videoFile, skill, onAnalysisComplete }: RealMoveNetAnalyzerProps) => {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [isReady, setIsReady] = useState(false);
-  const [status, setStatus] = useState("Checking MoveNet...");
-  const [detector, setDetector] = useState<any>(null);
+  const [status, setStatus] = useState("Initializing...");
+  const [detector, setDetector] = useState<posedetection.PoseDetector | null>(null);
+  const [backendReady, setBackendReady] = useState(false);
+
+  // Live rubric scores (Digging)
+  const [readyPlatformScore, setReadyPlatformScore] = useState(1);
+  const [contactAngleScore, setContactAngleScore] = useState(1);
+  const [legDriveShoulderScore, setLegDriveShoulderScore] = useState(1);
+  const [followThroughScore, setFollowThroughScore] = useState(1);
+
+  const [totalScore, setTotalScore] = useState(4);
+  const [grade, setGrade] = useState("D");
+
+  // Progress frame counters
+  const [framesAnalyzed, setFramesAnalyzed] = useState(0);
+  const [totalFramesEstimate, setTotalFramesEstimate] = useState(0);
+
+  // Timers / loop control
+  const rafRef = useRef<number | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
+  const analyzingStartMsRef = useRef<number>(0);
+
+  // Contact detection and frame buffers
+  const targetFPS = 15; // throttle estimatePoses calls
+  const lastInferMsRef = useRef<number>(0);
+  const lastKPRef = useRef<Array<{ x: number; y: number } | null> | null>(null);
+  const wristSpeedSeriesRef = useRef<number[]>([]);
+  const forearmAnglesAfterRef = useRef<number[]>([]);
+  const contactFrameIndexRef = useRef<number | null>(null);
+  const rubricFramesRef = useRef<RubricFrames>({});
 
   useEffect(() => {
-    initializeMoveNet();
+    // Init TFJS backend and detector once
+    (async () => {
+      try {
+        setStatus("Loading TensorFlow.js...");
+        if (tf.getBackend() !== "webgl") {
+          await tf.setBackend("webgl");
+        }
+        await tf.ready();
+        setBackendReady(true);
+        setStatus("Creating MoveNet (Thunder)...");
+
+        let created: posedetection.PoseDetector | null = null;
+        try {
+          created = await posedetection.createDetector(
+            posedetection.SupportedModels.MoveNet,
+            {
+              modelType: (posedetection as any).movenet.modelType.SINGLEPOSE_THUNDER,
+              enableSmoothing: true,
+            } as posedetection.MoveNetModelConfig
+          );
+        } catch (e) {
+          // Fallback to Lightning immediately if Thunder fails to init
+          created = await posedetection.createDetector(
+            posedetection.SupportedModels.MoveNet,
+            {
+              modelType: (posedetection as any).movenet.modelType.SINGLEPOSE_LIGHTNING,
+              enableSmoothing: true,
+            } as posedetection.MoveNetModelConfig
+          );
+          toast.message("Falling back to MoveNet Lightning for performance");
+        }
+
+        setDetector(created);
+        setStatus("MoveNet ready. Upload a video to begin.");
+      } catch (err: any) {
+        console.error(err);
+        setStatus(`Initialization failed: ${err?.message || err}`);
+        toast.error("Failed to initialize MoveNet");
+      }
+    })();
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      if (detector && (detector as any).dispose) (detector as any).dispose();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const initializeMoveNet = async () => {
+  useEffect(() => {
+    // Update total score + grade live
+    const sum = readyPlatformScore + contactAngleScore + legDriveShoulderScore + followThroughScore;
+    setTotalScore(sum);
+    if (sum >= 10) setGrade("A");
+    else if (sum >= 8) setGrade("B");
+    else if (sum >= 6) setGrade("C");
+    else setGrade("D");
+  }, [readyPlatformScore, contactAngleScore, legDriveShoulderScore, followThroughScore]);
+
+  const startAnalysis = async () => {
+    if (!videoFile) {
+      toast.error("Please select a video file");
+      return;
+    }
+    if (!backendReady || !detector) {
+      toast.error("MoveNet not ready yet");
+      return;
+    }
+
     try {
-      console.log("🔧 Initializing MoveNet...");
-      
-      // Check if libraries are loaded
-      if (!window.tf || !window.poseDetection) {
-        setStatus("MoveNet libraries not loaded");
-        console.error("❌ Missing libraries - tf:", !!window.tf, "poseDetection:", !!window.poseDetection);
+      // Reset state
+      setIsAnalyzing(true);
+      setProgress(0);
+      setFramesAnalyzed(0);
+      setTotalFramesEstimate(0);
+      setStatus("Preparing video...");
+      wristSpeedSeriesRef.current = [];
+      forearmAnglesAfterRef.current = [];
+      contactFrameIndexRef.current = null;
+      rubricFramesRef.current = {};
+
+      // Prepare elements
+      const video = videoRef.current ?? document.createElement("video");
+      videoRef.current = video;
+      video.muted = true;
+      video.playsInline = true;
+      video.controls = true;
+      video.preload = "auto";
+      video.crossOrigin = "anonymous";
+      video.onended = handleVideoEnded;
+
+      // Preflight: basic codec support
+      if (!browserCanLikelyPlay(videoFile, video)) {
+        setIsAnalyzing(false);
+        setStatus("Unsupported video format");
+        showUnsupportedVideoToast();
         return;
       }
 
-      console.log("✅ Libraries found - tf:", !!window.tf, "poseDetection:", !!window.poseDetection);
-      setStatus("Loading MoveNet model...");
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      const objectUrl = URL.createObjectURL(videoFile);
+      objectUrlRef.current = objectUrl;
+      video.src = objectUrl;
+      video.load();
 
-      // Initialize TensorFlow backend
-      if (!window.tf.getBackend()) {
-        await window.tf.setBackend('webgl');
-        await window.tf.ready();
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Video metadata timeout")), 10000);
+        video.onloadedmetadata = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        video.onerror = () => {
+          clearTimeout(timeout);
+          reject(new Error("Video metadata error"));
+        };
+        video.onstalled = () => {
+          // let it continue; if it never loads we hit timeout
+        };
+        video.onabort = () => {
+          // ignore; user did not abort here
+        };
+      });
+
+      const canvas = canvasRef.current ?? document.createElement("canvas");
+      canvasRef.current = canvas;
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+
+      // Decode test: attempt a short play/pause to verify browser can decode frames
+      try {
+        await safePlay(video);
+        // Give decoder a tick
+        await new Promise((r) => setTimeout(r, 100));
+        video.pause();
+      } catch (e) {
+        setIsAnalyzing(false);
+        setStatus("Playback failed");
+        showUnsupportedVideoToast();
+        return;
       }
 
-      // Create MoveNet detector
-      const moveNetDetector = await window.poseDetection.createDetector(
-        window.poseDetection.SupportedModels.MoveNet,
-        {
-          modelType: window.poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING
+      // Estimate total frames for progress
+      const estimatedTotal = Math.max(1, Math.ceil((video.duration || 0) * targetFPS));
+      setTotalFramesEstimate(estimatedTotal);
+
+      // Warm-up and check performance to optionally fall back to Lightning
+      try {
+        const warmStart = performance.now();
+        await detector.estimatePoses(video, { maxPoses: 1, flipHorizontal: false });
+        await detector.estimatePoses(video, { maxPoses: 1, flipHorizontal: false });
+        const warmAvg = (performance.now() - warmStart) / 2;
+        if ((detector as any)?.modelType === (posedetection as any).movenet.modelType.SINGLEPOSE_THUNDER && warmAvg > 100) {
+          // Recreate as Lightning
+          setStatus("Switching to Lightning for smoother performance...");
+          const lightning = await posedetection.createDetector(
+            posedetection.SupportedModels.MoveNet,
+            {
+              modelType: (posedetection as any).movenet.modelType.SINGLEPOSE_LIGHTNING,
+              enableSmoothing: true,
+            } as posedetection.MoveNetModelConfig
+          );
+          if ((detector as any).dispose) (detector as any).dispose();
+          setDetector(lightning);
+          toast.message("Using MoveNet Lightning");
         }
-      );
+      } catch {}
 
-      setDetector(moveNetDetector);
-      setStatus("MoveNet ready");
-      setIsReady(true);
-      console.log("✅ MoveNet initialized successfully");
-
-    } catch (error) {
-      console.error("❌ MoveNet initialization failed:", error);
-      setStatus(`MoveNet initialization failed: ${error.message}`);
-      setIsReady(false);
-    }
-  };
-
-  const analyzeVolleyballPose = (keypoints: any[], skill: string, timePercent: number) => {
-    if (!keypoints || keypoints.length === 0) return null;
-    
-    // Get key body points with confidence threshold
-    const getPoint = (name: string) => {
-      const point = keypoints.find(kp => kp.name === name);
-      return point && point.score > 0.3 ? point : null;
-    };
-    
-    const leftShoulder = getPoint('left_shoulder');
-    const rightShoulder = getPoint('right_shoulder');
-    const leftElbow = getPoint('left_elbow');
-    const rightElbow = getPoint('right_elbow');
-    const leftWrist = getPoint('left_wrist');
-    const rightWrist = getPoint('right_wrist');
-    const leftHip = getPoint('left_hip');
-    const rightHip = getPoint('right_hip');
-    const leftKnee = getPoint('left_knee');
-    const rightKnee = getPoint('right_knee');
-    
-    if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) return null;
-    
-    // Calculate pose characteristics
-    const shoulderCenter = {
-      x: (leftShoulder.x + rightShoulder.x) / 2,
-      y: (leftShoulder.y + rightShoulder.y) / 2
-    };
-    
-    const hipCenter = {
-      x: (leftHip.x + rightHip.x) / 2,
-      y: (leftHip.y + rightHip.y) / 2
-    };
-    
-    // Detect volleyball-specific poses
-    if (skill === 'Setting') {
-      // Ready position: early in video, stable stance
-      if (timePercent < 0.3) {
-        return 'readyFootwork';
+      // Start playback and analysis loop (should succeed after decode test)
+      analyzingStartMsRef.current = performance.now();
+      setStatus("Analyzing... (MoveNet)");
+      try {
+        await safePlay(video);
+      } catch (e) {
+        setIsAnalyzing(false);
+        setStatus("Playback blocked");
+        showUnsupportedVideoToast();
+        return;
       }
-      
-      // Hand shape/contact: hands above shoulders
-      if (leftWrist && rightWrist && leftWrist.y < shoulderCenter.y && rightWrist.y < shoulderCenter.y) {
-        return 'handShapeContact';
-      }
-      
-      // Extension: peak arm extension moment
-      if (leftElbow && rightElbow && leftWrist && rightWrist) {
-        const armExtension = Math.abs(leftWrist.y - leftElbow.y) + Math.abs(rightWrist.y - rightElbow.y);
-        if (armExtension > 100 && timePercent > 0.3 && timePercent < 0.7) {
-          return 'alignmentExtension';
-        }
-      }
-      
-      // Follow-through: later in video
-      if (timePercent > 0.65) {
-        return 'followThroughControl';
-      }
-      
-    } else if (skill === 'Digging') {
-      // Ready platform: early position, arms down
-      if (timePercent < 0.3 && leftWrist && rightWrist && leftWrist.y > shoulderCenter.y) {
-        return 'readyPlatform';
-      }
-      
-      // Contact angle: arms in platform position
-      if (leftWrist && rightWrist && leftElbow && rightElbow) {
-        const armAngle = Math.abs(leftWrist.y - rightWrist.y);
-        if (armAngle < 50 && leftWrist.y > shoulderCenter.y) {
-          return 'contactAngle';
-        }
-      }
-      
-      // Leg drive/shoulder: knees bent, active stance
-      if (leftKnee && rightKnee && leftKnee.y < hipCenter.y - 20) {
-        return 'legDriveShoulder';
-      }
-    }
-    
-    return null;
-  };
-
-  const analyzePoseQuality = (keypoints: any[], skill: string, poseType: string) => {
-    if (!keypoints || keypoints.length === 0) return 1; // Default low score
-    
-    const getPoint = (name: string) => {
-      const point = keypoints.find(kp => kp.name === name);
-      return point && point.score > 0.3 ? point : null;
-    };
-    
-    const leftShoulder = getPoint('left_shoulder');
-    const rightShoulder = getPoint('right_shoulder');
-    const leftElbow = getPoint('left_elbow');
-    const rightElbow = getPoint('right_elbow');
-    const leftWrist = getPoint('left_wrist');
-    const rightWrist = getPoint('right_wrist');
-    const leftHip = getPoint('left_hip');
-    const rightHip = getPoint('right_hip');
-    const leftKnee = getPoint('left_knee');
-    const rightKnee = getPoint('right_knee');
-    const leftAnkle = getPoint('left_ankle');
-    const rightAnkle = getPoint('right_ankle');
-    
-    if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) return 1;
-    
-    let score = 1; // Start with base score
-    
-    if (skill === 'Setting') {
-      if (poseType === 'readyFootwork') {
-        // Check stance width and knee bend
-        const stanceWidth = Math.abs((leftAnkle?.x || 0) - (rightAnkle?.x || 0));
-        const avgKneeHeight = ((leftKnee?.y || 0) + (rightKnee?.y || 0)) / 2;
-        const avgHipHeight = ((leftHip.y + rightHip.y) / 2);
-        const kneeBend = avgHipHeight - avgKneeHeight;
-        
-        if (stanceWidth > 60 && kneeBend > 40) score += 1; // Good stance
-        if (kneeBend > 70 && stanceWidth > 80) score += 1; // Excellent knee bend and stance
-      }
-      
-      else if (poseType === 'handShapeContact') {
-        // Check hand position and triangle formation
-        const handsAboveShoulders = leftWrist && rightWrist && 
-          leftWrist.y < leftShoulder.y && rightWrist.y < rightShoulder.y;
-        const handDistance = leftWrist && rightWrist ? 
-          Math.abs(leftWrist.x - rightWrist.x) : 0;
-        
-        if (handsAboveShoulders && handDistance > 30) score += 1; // Must have hands up AND proper width
-        if (handDistance > 40 && handDistance < 70) score += 1; // Stricter triangle width
-      }
-      
-      else if (poseType === 'alignmentExtension') {
-        // Check body alignment and extension
-        const shoulderLevel = Math.abs(leftShoulder.y - rightShoulder.y);
-        const hipLevel = Math.abs(leftHip.y - rightHip.y);
-        const bodyUpright = Math.abs((leftShoulder.x + rightShoulder.x) / 2 - (leftHip.x + rightHip.x) / 2);
-        
-        if (shoulderLevel < 15 && hipLevel < 15 && bodyUpright < 25) score += 1; // Stricter alignment
-        if (shoulderLevel < 10 && hipLevel < 10 && bodyUpright < 15) score += 1; // Excellent alignment
-      }
-      
-      else if (poseType === 'followThroughControl') {
-        // Check follow-through position
-        const wristExtension = leftWrist && rightWrist && leftElbow && rightElbow ?
-          (Math.abs(leftWrist.y - leftElbow.y) + Math.abs(rightWrist.y - rightElbow.y)) / 2 : 0;
-        
-        if (wristExtension > 80) score += 1; // Good extension (stricter)
-        if (wristExtension > 110) score += 1; // Excellent extension
-      }
-    }
-    
-    else if (skill === 'Digging') {
-      if (poseType === 'readyPlatform') {
-        // Check platform formation and stance
-        const armLevel = leftWrist && rightWrist ? 
-          Math.abs(leftWrist.y - rightWrist.y) : 100;
-        const armsBelow = leftWrist && rightWrist && 
-          leftWrist.y > leftShoulder.y && rightWrist.y > rightShoulder.y;
-        
-        if (armsBelow && armLevel < 25) score += 1; // Must have proper platform formation
-        if (armLevel < 15) score += 1; // Very level platform
-      }
-      
-      else if (poseType === 'contactAngle') {
-        // Check platform angle and position
-        const elbowExtension = leftElbow && rightElbow && leftWrist && rightWrist ?
-          (Math.abs(leftWrist.x - leftElbow.x) + Math.abs(rightWrist.x - rightElbow.x)) / 2 : 0;
-        
-        if (elbowExtension > 60) score += 1; // Extended arms (stricter)
-        if (elbowExtension > 90) score += 1; // Fully extended
-      }
-      
-      else if (poseType === 'legDriveShoulder') {
-        // Check leg drive and shoulder position
-        const avgKneeHeight = ((leftKnee?.y || 0) + (rightKnee?.y || 0)) / 2;
-        const avgHipHeight = (leftHip.y + rightHip.y) / 2;
-        const kneeBend = avgHipHeight - avgKneeHeight;
-        
-        if (kneeBend > 50) score += 1; // Good knee bend (stricter)
-        if (kneeBend > 80) score += 1; // Excellent drive position
-      }
-    }
-    
-    return Math.min(3, Math.max(0, score)); // Clamp to 0-3 range
-  };
-
-  const detectMovementAndAction = (keypoints: any[], previousKeypoints: any[] | null) => {
-    if (!keypoints || !previousKeypoints) return { movement: 0, volleyballAction: false };
-    
-    const getPoint = (kps: any[], name: string) => {
-      const point = kps.find(kp => kp.name === name);
-      return point && point.score > 0.3 ? point : null;
-    };
-    
-    // Calculate movement between frames
-    let totalMovement = 0;
-    let validPoints = 0;
-    
-    const keyBodyParts = ['left_wrist', 'right_wrist', 'left_elbow', 'right_elbow', 'left_shoulder', 'right_shoulder'];
-    
-    keyBodyParts.forEach(partName => {
-      const current = getPoint(keypoints, partName);
-      const previous = getPoint(previousKeypoints, partName);
-      
-      if (current && previous) {
-        const distance = Math.sqrt(
-          Math.pow(current.x - previous.x, 2) + 
-          Math.pow(current.y - previous.y, 2)
-        );
-        totalMovement += distance;
-        validPoints++;
-      }
-    });
-    
-    const avgMovement = validPoints > 0 ? totalMovement / validPoints : 0;
-    
-    // Detect volleyball-specific actions
-    const leftWrist = getPoint(keypoints, 'left_wrist');
-    const rightWrist = getPoint(keypoints, 'right_wrist');
-    const leftShoulder = getPoint(keypoints, 'left_shoulder');
-    const rightShoulder = getPoint(keypoints, 'right_shoulder');
-    
-    let volleyballAction = false;
-    
-    if (leftWrist && rightWrist && leftShoulder && rightShoulder) {
-      const shoulderCenter = (leftShoulder.y + rightShoulder.y) / 2;
-      const handsAboveShoulders = leftWrist.y < shoulderCenter && rightWrist.y < shoulderCenter;
-      const handsBelowShoulders = leftWrist.y > shoulderCenter && rightWrist.y > shoulderCenter;
-      const significantArmMovement = avgMovement > 15; // Threshold for meaningful arm movement
-      
-      // Setting action: hands above shoulders with movement
-      if (handsAboveShoulders && significantArmMovement) {
-        volleyballAction = true;
-      }
-      
-      // Digging action: hands below shoulders in platform with movement
-      if (handsBelowShoulders && significantArmMovement) {
-        const armLevel = Math.abs(leftWrist.y - rightWrist.y);
-        if (armLevel < 40) { // Level platform formation
-          volleyballAction = true;
-        }
-      }
-    }
-    
-    return { movement: avgMovement, volleyballAction };
-  };
-
-  const drawKeypoints = (ctx: CanvasRenderingContext2D, keypoints: any[], width: number, height: number) => {
-    console.log("🎨 Drawing keypoints on canvas:", {
-      keypointsCount: keypoints.length,
-      canvasSize: `${width}x${height}`,
-      sampleKeypoint: keypoints[0]
-    });
-    
-    // Test if canvas drawing works at all
-    ctx.fillStyle = '#ff0000';
-    ctx.fillRect(10, 10, 50, 50);
-    console.log("🟥 Drew test red square");
-    
-    // Check keypoint format
-    const validKeypoints = keypoints.filter(kp => kp && typeof kp.x === 'number' && typeof kp.y === 'number' && kp.score > 0.3);
-    console.log("✅ Valid keypoints:", validKeypoints.length, "out of", keypoints.length);
-    
-    if (validKeypoints.length === 0) {
-      console.log("❌ No valid keypoints to draw");
-      return;
-    }
-    
-    // MoveNet keypoint connections for skeleton
-    const connections = [
-      // Face
-      [0, 1], [0, 2], [1, 3], [2, 4],
-      // Torso
-      [5, 6], [5, 11], [6, 12], [11, 12],
-      // Left arm
-      [5, 7], [7, 9],
-      // Right arm  
-      [6, 8], [8, 10],
-      // Left leg
-      [11, 13], [13, 15],
-      // Right leg
-      [12, 14], [14, 16]
-    ];
-
-    // Draw connections first (skeleton)
-    ctx.strokeStyle = '#00ff00';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    
-    let connectionsDrawn = 0;
-    connections.forEach(([startIdx, endIdx]) => {
-      const startPoint = keypoints[startIdx];
-      const endPoint = keypoints[endIdx];
-      
-      if (startPoint?.score > 0.3 && endPoint?.score > 0.3) {
-        const startX = startPoint.x * width;
-        const startY = startPoint.y * height;
-        const endX = endPoint.x * width;
-        const endY = endPoint.y * height;
-        
-        console.log(`🔗 Drawing connection ${startIdx}-${endIdx}: (${startX.toFixed(1)}, ${startY.toFixed(1)}) -> (${endX.toFixed(1)}, ${endY.toFixed(1)})`);
-        
-        ctx.moveTo(startX, startY);
-        ctx.lineTo(endX, endY);
-        connectionsDrawn++;
-      }
-    });
-    
-    ctx.stroke();
-    console.log("🔗 Drew", connectionsDrawn, "skeleton connections");
-
-    // Draw keypoints (joints)
-    let keypointsDrawn = 0;
-    keypoints.forEach((keypoint, index) => {
-      if (keypoint.score > 0.3) {
-        const x = keypoint.x * width;
-        const y = keypoint.y * height;
-        
-        console.log(`🎯 Drawing keypoint ${index}: (${x.toFixed(1)}, ${y.toFixed(1)}) score: ${keypoint.score.toFixed(2)}`);
-        
-        // Different colors for different body parts
-        if (index <= 4) ctx.fillStyle = '#ff0000'; // Head
-        else if (index <= 6) ctx.fillStyle = '#00ff00'; // Shoulders
-        else if (index <= 10) ctx.fillStyle = '#0000ff'; // Arms
-        else if (index <= 12) ctx.fillStyle = '#ffff00'; // Torso
-        else ctx.fillStyle = '#ff00ff'; // Legs
-        
-        ctx.beginPath();
-        ctx.arc(x, y, 8, 0, 2 * Math.PI);
-        ctx.fill();
-        
-        // Add white border
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        keypointsDrawn++;
-      }
-    });
-    
-    console.log("🎯 Drew", keypointsDrawn, "keypoints total");
-  };
-
-  const captureVideoFrame = (video: HTMLVideoElement, keypoints?: any[]): string => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    
-    console.log("📸 Capturing frame:", {
-      canvasSize: `${canvas.width}x${canvas.height}`,
-      hasKeypoints: !!keypoints,
-      keypointsLength: keypoints?.length || 0
-    });
-    
-    if (ctx) {
-      // Draw video frame
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      console.log("🖼️ Drew video frame");
-      
-      // Draw keypoints if provided
-      if (keypoints && keypoints.length > 0) {
-        console.log("🎨 Adding keypoints overlay to captured frame");
-        drawKeypoints(ctx, keypoints, canvas.width, canvas.height);
+      lastInferMsRef.current = 0;
+      rafRef.current = requestAnimationFrame(tick);
+    } catch (err: any) {
+      console.error(err);
+      setIsAnalyzing(false);
+      const msg = (err?.message || "").toLowerCase();
+      if (msg.includes("metadata") || msg.includes("decode") || msg.includes("playback")) {
+        showUnsupportedVideoToast();
+        setStatus("Unsupported or unplayable video");
       } else {
-        console.log("⚠️ No keypoints provided for frame capture");
+        setStatus(`Error: ${err?.message || err}`);
+        toast.error("Failed to start analysis");
       }
-      
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-      console.log("✅ Frame captured successfully, data URL length:", dataUrl.length);
-      return dataUrl;
     }
-    
-    console.log("❌ Failed to get canvas context");
-    return '';
   };
 
-  const analyzeVideo = async () => {
-    if (!videoFile || !detector) {
-      toast.error("MoveNet not ready or missing video file");
+  const handleVideoEnded = () => {
+    // Finalize and emit results
+    finishAnalysis();
+  };
+
+  const captureOverlayFrame = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return "";
+    try {
+      return canvas.toDataURL("image/jpeg", 0.85);
+    } catch {
+      return "";
+    }
+  };
+
+  const finishAnalysis = () => {
+    const total = framesAnalyzed;
+    const detected = framesAnalyzed; // we only increment when we detect
+
+    const contactFrame = contactFrameIndexRef.current ?? Math.floor(framesAnalyzed / 2);
+
+    // Confidence: mix of coverage and stability
+    const detectionRate = totalFramesEstimate > 0 ? total / totalFramesEstimate : 0.0;
+    const wristSpeedPeak = wristSpeedSeriesRef.current.length
+      ? Math.max(...wristSpeedSeriesRef.current)
+      : 0;
+    const normalizedPeak = clamp(wristSpeedPeak, 0, 1);
+    const confidence = clamp(0.5 * detectionRate + 0.5 * normalizedPeak, 0, 1);
+
+    const scores: Record<string, number> = {
+      readyPlatform: readyPlatformScore,
+      contactAngle: contactAngleScore,
+      legDriveShoulder: legDriveShoulderScore,
+      followThroughControl: followThroughScore,
+    };
+
+    const metrics: PoseMetrics = {
+      frames: total,
+      detected_frames: detected,
+      kneeFlex: 0, // not used directly in UI; keeping for compatibility
+      elbowLock: false,
+      wristAboveForehead: false,
+      contactHeightRelTorso: 0,
+      platformFlatness: 0,
+      extensionSequence: 0,
+      facingTarget: 0,
+      stability: 0,
+      contactFrame,
+    };
+
+    onAnalysisComplete(metrics, scores, confidence, rubricFramesRef.current);
+    setIsAnalyzing(false);
+    setStatus("Analysis complete");
+    toast.success("Analysis complete");
+  };
+
+  const tick = async () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    const det = detector;
+    if (!video || !canvas || !ctx || !det) return;
+
+    const now = performance.now();
+    const elapsedSinceLast = now - lastInferMsRef.current;
+    const minIntervalMs = 1000 / targetFPS;
+    if (elapsedSinceLast < minIntervalMs) {
+      rafRef.current = requestAnimationFrame(tick);
       return;
     }
 
-    setIsAnalyzing(true);
-    setProgress(0);
+    lastInferMsRef.current = now;
 
     try {
-      console.log("🔍 Starting MoveNet analysis...");
-      
-      // Create video element
-      const video = document.createElement('video');
-      video.src = URL.createObjectURL(videoFile);
-      video.muted = true;
-      video.playsInline = true;
+      const poses = (await det.estimatePoses(video, {
+        maxPoses: 1,
+        flipHorizontal: false,
+      })) as posedetection.Pose[];
 
-      await new Promise((resolve) => {
-        video.onloadedmetadata = resolve;
-      });
+      // Draw video frame
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      const duration = video.duration || 0;
-      const frameStep = Math.max(duration / 32, 0.5); // Reduce frames for better performance
-      let totalFrames = 0;
-      let detectedFrames = 0;
-      const rubricFrames: RubricFrames = {};
-      
-      // Track which rubric components we've captured
-      const neededComponents = skill === 'Setting' 
-        ? ['readyFootwork', 'handShapeContact', 'alignmentExtension', 'followThroughControl']
-        : ['readyPlatform', 'contactAngle', 'legDriveShoulder', 'followThroughControl'];
+      if (poses && poses[0] && poses[0].keypoints?.length) {
+        const kps = poses[0].keypoints as posedetection.Keypoint[];
 
-      console.log(`🎬 Analyzing ${duration.toFixed(1)}s video with ${Math.ceil(duration / frameStep)} frames`);
+        // Compute pixel coords and filter by score
+        const p = (idx: number) => getPointPixels(kps, idx, canvas.width, canvas.height);
+        const ls = p(KP.leftShoulder);
+        const rs = p(KP.rightShoulder);
+        const lh = p(KP.leftHip);
+        const rh = p(KP.rightHip);
+        const le = p(KP.leftElbow);
+        const re = p(KP.rightElbow);
+        const lw = p(KP.leftWrist);
+        const rw = p(KP.rightWrist);
+        const lk = p(KP.leftKnee);
+        const rk = p(KP.rightKnee);
+        const la = p(KP.leftAnkle);
+        const ra = p(KP.rightAnkle);
 
-      // Set overall timeout for analysis
-      const analysisTimeout = setTimeout(() => {
-        console.error("⏰ Analysis timeout after 15 seconds");
-        throw new Error("Analysis timed out - please try again");
-      }, 15000);
+        const haveTorso = ls && rs && lh && rh;
+        const haveArms = le && re && lw && rw;
+        const haveLegs = lk && rk && la && ra;
 
-      // Track pose quality scores for each component
-      const componentScores: Record<string, number[]> = {};
-      let totalMovement = 0;
-      let volleyballActionFrames = 0;
-      let previousKeypoints: any[] | null = null;
-      
-      // Analyze frames with proper error handling
-      for (let time = 0; time < duration; time += frameStep) {
-        try {
-          // Set video time with timeout
-          video.currentTime = Math.min(time, duration - 0.1);
-          
-          await Promise.race([
-            new Promise((resolve) => {
-              video.onseeked = resolve;
-            }),
-            new Promise((_, reject) => {
-              setTimeout(() => reject(new Error("Frame seek timeout")), 1000);
-            })
-          ]);
+        if (haveTorso) {
+          // Normalize by shoulder width or torso length if needed
+          const shoulderWidth = ls && rs ? euclidean(ls, rs) : 0;
+          const hipWidth = lh && rh ? euclidean(lh, rh) : 0;
+          const torsoLength = (ls && rs && lh && rh)
+            ? euclidean({ x: (ls.x + rs.x) / 2, y: (ls.y + rs.y) / 2 }, { x: (lh.x + rh.x) / 2, y: (lh.y + rh.y) / 2 })
+            : 0;
+          const normBase = shoulderWidth || torsoLength || hipWidth || 1;
 
-          // Estimate poses with timeout
-          const poses = await Promise.race([
-            detector.estimatePoses(video, {
-              maxPoses: 1,
-              flipHorizontal: false
-            }),
-            new Promise((_, reject) => {
-              setTimeout(() => reject(new Error("Pose detection timeout")), 2000);
-            })
-          ]) as any[];
+          // Draw skeleton (lines only)
+          ctx.strokeStyle = "#00ff99";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          for (const [a, b] of SKELETON_CONNECTIONS) {
+            const pa = p(a);
+            const pb = p(b);
+            if (pa && pb) {
+              ctx.moveTo(pa.x, pa.y);
+              ctx.lineTo(pb.x, pb.y);
+            }
+          }
+          ctx.stroke();
 
-          totalFrames++;
-          const timePercent = time / duration;
-          
-          if (poses[0]?.keypoints?.length > 0) {
-            detectedFrames++;
-            
-            // Detect movement and volleyball actions
-            const { movement, volleyballAction } = detectMovementAndAction(poses[0].keypoints, previousKeypoints);
-            totalMovement += movement;
-            if (volleyballAction) volleyballActionFrames++;
-            
-            // Analyze volleyball-specific pose
-            const poseType = analyzeVolleyballPose(poses[0].keypoints, skill, timePercent);
-            
-            if (poseType && volleyballAction) { // Only score poses with volleyball action
-              // Analyze pose quality and store score
-              const poseQuality = analyzePoseQuality(poses[0].keypoints, skill, poseType);
-              
-              if (!componentScores[poseType]) {
-                componentScores[poseType] = [];
-              }
-              componentScores[poseType].push(poseQuality);
-              
-              // Capture frame for this rubric component if we haven't already (take the best quality one)
-              if (!rubricFrames[poseType as keyof RubricFrames] || 
-                  poseQuality > Math.max(...componentScores[poseType].slice(0, -1))) {
-                rubricFrames[poseType as keyof RubricFrames] = captureVideoFrame(video, poses[0].keypoints);
-                console.log(`📸 Captured ${poseType} frame at ${time.toFixed(1)}s (quality: ${poseQuality}/3, movement: ${movement.toFixed(1)})`);
+          // Update progress
+          setFramesAnalyzed((prev) => prev + 1);
+          setProgress(
+            (prev) => {
+              const total = totalFramesEstimate || Math.max(1, Math.ceil((video.duration || 0) * targetFPS));
+              const nextFrames = Math.min(total, framesAnalyzed + 1);
+              const ratio = (nextFrames / total) * 100;
+              return clamp(ratio, 0, 100);
+            }
+          );
+
+          // Compute dig rubric components live if skill is Digging
+          if (skill === "Digging") {
+            // Ready Position & Platform
+            let readyScore = 1;
+            if (haveLegs && haveArms) {
+              const leftKneeAngle = angleABC(lh!, lk!, la!);
+              const rightKneeAngle = angleABC(rh!, rk!, ra!);
+              const kneesBent =
+                leftKneeAngle >= 60 && leftKneeAngle <= 110 &&
+                rightKneeAngle >= 60 && rightKneeAngle <= 110;
+              const wristsAligned = lw && rw ? Math.abs(lw.y - rw.y) / normBase < 0.12 : false;
+              if (kneesBent && wristsAligned) readyScore = 3;
+              else if (kneesBent || wristsAligned) readyScore = 2;
+              else readyScore = 1;
+
+              // Capture best frame once
+              if (readyScore >= 2 && !rubricFramesRef.current.readyPlatform) {
+                rubricFramesRef.current.readyPlatform = captureOverlayFrame();
               }
             }
-            
-            previousKeypoints = poses[0].keypoints;
+            setReadyPlatformScore((prev) => Math.max(prev, readyScore));
+
+            // Contact detection via wrist movement spike (normalized per-frame displacement)
+            if (haveArms) {
+              const prevKps = lastKPRef.current;
+              if (prevKps && prevKps.length === kps.length) {
+                const prevLW = prevKps[KP.leftWrist];
+                const prevRW = prevKps[KP.rightWrist];
+                if (lw && rw && prevLW && prevRW) {
+                  const lwMove = euclidean(lw, prevLW) / normBase;
+                  const rwMove = euclidean(rw, prevRW) / normBase;
+                  const avgMove = (lwMove + rwMove) / 2;
+                  wristSpeedSeriesRef.current.push(avgMove);
+
+                  // Threshold for spike
+                  const spike = avgMove > 0.28; // tuned for ~15 FPS
+                  if (spike && contactFrameIndexRef.current == null) {
+                    contactFrameIndexRef.current = framesAnalyzed;
+                    // Capture contact frame
+                    rubricFramesRef.current.contactAngle = captureOverlayFrame();
+                  }
+                }
+              }
+            }
+
+            // Contact Point & Angle (platform slightly angled upwards)
+            let contactScore = 1;
+            if (haveArms) {
+              const wristLineAngle = lw && rw ? lineAngleDegrees(lw, rw) : 0;
+              // Upwards slight angle: -25° to -5° (screen coords)
+              if (wristLineAngle >= -25 && wristLineAngle <= -5) contactScore = 3;
+              else if (wristLineAngle >= -40 && wristLineAngle <= 5) contactScore = 2;
+              else contactScore = 1;
+            }
+            setContactAngleScore((prev) => Math.max(prev, contactScore));
+
+            // Leg Drive & Shoulder Lift (compare before/after contact)
+            if (contactFrameIndexRef.current != null) {
+              const contactIdx = contactFrameIndexRef.current;
+              // We approximate before/after using the live stream by keeping a rolling average
+              // Here we use current snapshot vs a delayed snapshot via wristSpeedSeriesRef indices
+              let legDriveScore = 1;
+              if (haveLegs && ls && rs) {
+                const shoulderCenterY = (ls.y + rs.y) / 2;
+                // Use short buffers of knee angles around contact by looking at historical metrics
+                // For simplicity, infer from immediate frame deltas post-contact
+                const leftKneeAngle = angleABC(lh!, lk!, la!);
+                const rightKneeAngle = angleABC(rh!, rk!, ra!);
+                // Estimate "before" by using minimal bending seen so far if we are right after contact
+                // Without a full buffer, approximate by earlier best readiness
+                const beforeBend = 100; // nominal mid
+                const afterBend = (leftKneeAngle + rightKneeAngle) / 2;
+                const kneeExtend = afterBend - beforeBend; // positive = extending
+
+                // Shoulder lift: negative dy is up, but we only have current frame; approximate via vertical location
+                const shoulderLiftNormalized = (contactIdx != null && framesAnalyzed > contactIdx + 3)
+                  ? 0.12
+                  : 0.0; // coarse approximation while streaming
+
+                if (kneeExtend > 20 && shoulderLiftNormalized > 0.08) legDriveScore = 3;
+                else if (kneeExtend > 10) legDriveScore = 2;
+                else legDriveScore = 1;
+
+                if (legDriveScore >= 2 && !rubricFramesRef.current.legDriveShoulder) {
+                  rubricFramesRef.current.legDriveShoulder = captureOverlayFrame();
+                }
+              }
+              setLegDriveShoulderScore((prev) => Math.max(prev, legDriveScore));
+            }
+
+            // Follow-Through & Control (stability of forearm angle after contact)
+            if (contactFrameIndexRef.current != null && haveArms) {
+              const leftForearmAngle = le && lw ? lineAngleDegrees(le, lw) : 0;
+              const rightForearmAngle = re && rw ? lineAngleDegrees(re, rw) : 0;
+              const avgForearmAngle = (leftForearmAngle + rightForearmAngle) / 2;
+              forearmAnglesAfterRef.current.push(avgForearmAngle);
+
+              const window = forearmAnglesAfterRef.current.slice(-Math.max(5, Math.floor(targetFPS * 0.5)));
+              const mean = window.reduce((s, v) => s + v, 0) / (window.length || 1);
+              const variance = window.reduce((s, v) => s + (v - mean) * (v - mean), 0) / (window.length || 1);
+              const std = Math.sqrt(variance);
+
+              let followScore = 1;
+              if (std < 5) followScore = 3;
+              else if (std < 10) followScore = 2;
+              else followScore = 1;
+
+              setFollowThroughScore((prev) => Math.max(prev, followScore));
+              if (followScore >= 2 && !rubricFramesRef.current.followThroughControl) {
+                rubricFramesRef.current.followThroughControl = captureOverlayFrame();
+              }
+            }
           }
 
-          // Update progress more accurately
-          const currentProgress = Math.min(95, (time / duration) * 95);
-          setProgress(currentProgress);
-
-        } catch (frameError) {
-          console.warn(`⚠️ Skipping frame at ${time.toFixed(1)}s:`, frameError.message);
-          totalFrames++;
-          // Continue with next frame instead of failing
+          // Update last keypoints for speed calc (store pixel coords by index)
+          lastKPRef.current = kps.map((kp) => ({ x: kp.x, y: kp.y }));
         }
+
       }
 
-      // Clear timeout if we made it this far
-      clearTimeout(analysisTimeout);
-      setProgress(100);
-
-      console.log(`✅ Frame analysis complete: ${detectedFrames}/${totalFrames} frames`);
-
-      // Clean up
-      URL.revokeObjectURL(video.src);
-
-      // Ensure we have at least one frame for each needed component
-      const missingComponents = neededComponents.filter(comp => !rubricFrames[comp as keyof RubricFrames]);
-      if (missingComponents.length > 0) {
-        console.log(`⚠️ Missing frames for: ${missingComponents.join(', ')}`);
-        
-        // Capture a fallback frame for missing components
-        video.currentTime = duration * 0.5;
-        await new Promise((resolve) => { video.onseeked = resolve; });
-        const fallbackFrame = captureVideoFrame(video);
-        
-        missingComponents.forEach(comp => {
-          rubricFrames[comp as keyof RubricFrames] = fallbackFrame;
-        });
+      // Overlay text (scores)
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillRect(10, 10, 260, 90);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "14px sans-serif";
+      const y0 = 30;
+      const line = 18;
+      if (skill === "Digging") {
+        ctx.fillText(`Ready & Platform: ${readyPlatformScore}/3`, 20, y0);
+        ctx.fillText(`Contact & Angle: ${contactAngleScore}/3`, 20, y0 + line);
+        ctx.fillText(`Leg Drive & Shoulder: ${legDriveShoulderScore}/3`, 20, y0 + line * 2);
+        ctx.fillText(`Follow-Through: ${followThroughScore}/3`, 20, y0 + line * 3);
       }
 
-      // Calculate average scores for each component based on actual pose analysis
-      const finalScores: Record<string, number> = {};
-      
-      Object.entries(componentScores).forEach(([component, scores]) => {
-        if (scores.length > 0) {
-          // Use the best score from multiple detections of the same pose type
-          finalScores[component] = Math.max(...scores);
-        }
-      });
-      
-      // Ensure all components have scores (fallback to basic detection rate)
-      const allComponents = skill === 'Setting' 
-        ? ['readyFootwork', 'handShapeContact', 'alignmentExtension', 'followThroughControl']
-        : ['readyPlatform', 'contactAngle', 'legDriveShoulder', 'followThroughControl'];
-      
-      // Calculate realistic confidence based on movement and volleyball actions
-      const avgMovement = totalMovement / Math.max(1, detectedFrames);
-      const actionRate = volleyballActionFrames / Math.max(1, detectedFrames);
-      const detectionRate = detectedFrames / Math.max(1, totalFrames);
-      
-      // Real confidence calculation
-      const movementConfidence = Math.min(1, avgMovement / 30); // Good movement = 30+ pixels
-      const actionConfidence = actionRate; // Percentage of frames with volleyball actions
-      const poseConfidence = detectionRate; // Pose detection success rate
-      
-      const confidence = (movementConfidence * 0.4 + actionConfidence * 0.4 + poseConfidence * 0.2);
-      
-      console.log(`📊 Analysis metrics:`);
-      console.log(`  - Detected frames: ${detectedFrames}/${totalFrames} (${(detectionRate * 100).toFixed(1)}%)`);
-      console.log(`  - Avg movement: ${avgMovement.toFixed(1)} pixels/frame`);
-      console.log(`  - Volleyball actions: ${volleyballActionFrames}/${detectedFrames} (${(actionRate * 100).toFixed(1)}%)`);
-      console.log(`  - Real confidence: ${(confidence * 100).toFixed(1)}%`);
-      
-      // Stricter minimum confidence check - reject poor videos
-      if (confidence < 0.4 || volleyballActionFrames < 5 || avgMovement < 15) {
-        throw new Error(
-          `Video quality insufficient for analysis:\n` +
-          `• Movement detected: ${avgMovement.toFixed(1)} pixels (need >15)\n` +
-          `• Volleyball actions: ${volleyballActionFrames} frames (need ≥5)\n` +
-          `• Overall confidence: ${(confidence * 100).toFixed(1)}% (need ≥40%)\n\n` +
-          `Please record a new video showing clear, dynamic volleyball technique.`
-        );
-      }
-
-      console.log(`📊 Analysis complete: ${detectedFrames}/${totalFrames} frames detected (${(confidence * 100).toFixed(1)}%)`);
-      
-      // Apply stricter confidence penalty to scores
-      allComponents.forEach(component => {
-        if (!finalScores[component]) {
-          // Zero score for no detected actions
-          finalScores[component] = 0;
-        } else {
-          // Apply stricter confidence penalty and round down
-          finalScores[component] = Math.floor(finalScores[component] * Math.min(confidence * 1.2, 1.0));
-        }
-      });
-
-      console.log(`📸 Captured frames for: ${Object.keys(rubricFrames).join(', ')}`);
-      console.log(`🎯 Component scores:`, finalScores);
-
-      // Generate pose metrics (keeping existing structure)
-      const baseScore = Math.floor(confidence * 3); // 0-3 scale
-      const scores = {
-        readyFootwork: finalScores.readyFootwork || baseScore,
-        handShapeContact: finalScores.handShapeContact || (skill === 'Setting' ? Math.min(3, baseScore + 1) : baseScore),
-        alignmentExtension: finalScores.alignmentExtension || baseScore,
-        followThroughControl: finalScores.followThroughControl || baseScore,
-        readyPlatform: finalScores.readyPlatform || (skill === 'Digging' ? Math.min(3, baseScore + 1) : baseScore),
-        contactAngle: finalScores.contactAngle || (skill === 'Digging' ? baseScore : 0),
-        legDriveShoulder: finalScores.legDriveShoulder || (skill === 'Digging' ? baseScore : 0)
-      };
-
-      // Generate pose metrics
-      const metrics: PoseMetrics = {
-        frames: totalFrames,
-        detected_frames: detectedFrames,
-        kneeFlex: 20 + Math.random() * 15,
-        elbowLock: confidence > 0.7,
-        wristAboveForehead: skill === "Setting" && confidence > 0.6,
-        contactHeightRelTorso: skill === "Setting" ? 0.85 + Math.random() * 0.1 : 0.4 + Math.random() * 0.2,
-        platformFlatness: skill === "Digging" ? 5 + Math.random() * 20 : 0,
-        extensionSequence: confidence,
-        facingTarget: 0.8 + Math.random() * 0.2,
-        stability: confidence,
-        contactFrame: Math.floor(detectedFrames / 2)
-      };
-
-      onAnalysisComplete(metrics, scores, confidence, rubricFrames);
-      toast.success(`Analysis complete! Captured ${Object.keys(rubricFrames).length} reference frames`);
-
-    } catch (error) {
-      console.error("❌ Analysis failed:", error);
-      toast.error(`Analysis failed: ${error.message}`);
-    } finally {
-      setIsAnalyzing(false);
-      setProgress(0);
+      rafRef.current = requestAnimationFrame(tick);
+    } catch (err) {
+      console.error(err);
+      rafRef.current = requestAnimationFrame(tick);
     }
   };
 
   return (
     <div className="space-y-4">
-      {isAnalyzing && (
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">
-            Running MoveNet pose analysis... ({Math.round(progress)}%)
-            {progress > 90 && " - Processing results..."}
-          </p>
-          <Progress value={progress} className="w-full" />
+      <div className="grid grid-cols-1 gap-3">
+        <div className="relative w-full">
+          <div className="rounded-lg overflow-hidden border">
+            <div className="relative">
+              <video
+                ref={videoRef}
+                className="w-full h-auto block"
+                muted
+                playsInline
+                controls
+              />
+              <canvas
+                ref={canvasRef}
+                className="absolute inset-0 w-full h-full"
+                style={{ pointerEvents: "none" }}
+              />
+            </div>
+          </div>
         </div>
-      )}
-      
-      <Button
-        onClick={analyzeVideo}
-        disabled={!videoFile || !isReady || isAnalyzing}
-        className="w-full"
-        size="lg"
-      >
-        {isAnalyzing ? "Analyzing with MoveNet..." : "Analyze with AI Pose Detection"}
-      </Button>
-      
-      <div className="text-xs text-muted-foreground bg-green-50 p-3 rounded-lg">
-        <div className="font-medium text-green-900 mb-1">
-          Status: {status}
+
+        <div className="grid grid-cols-2 gap-3 items-center">
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">
+              {isAnalyzing
+                ? `Analyzing... ${Math.round(progress)}%`
+                : status}
+            </p>
+            <Progress value={progress} className="w-full" />
+            <p className="text-xs text-muted-foreground">
+              Frames: {framesAnalyzed}/{totalFramesEstimate || "?"}
+            </p>
+          </div>
+          <div className="justify-self-end">
+            <Button
+              onClick={startAnalysis}
+              disabled={!videoFile || !detector || isAnalyzing}
+              className="w-full"
+              size="lg"
+            >
+              {isAnalyzing ? "Analyzing with MoveNet..." : "Analyze with AI Pose Detection"}
+            </Button>
+          </div>
         </div>
-        <div className="text-green-800">
-          Using TensorFlow.js MoveNet Lightning for reliable pose detection.
-        </div>
-        {isAnalyzing && (
-          <div className="text-blue-600 mt-1">
-            ⚡ Processing with timeouts to prevent hanging...
+
+        {skill === "Digging" && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-lg border p-3">
+              <p className="text-sm font-medium">Ready Position & Platform</p>
+              <p className="text-2xl font-bold">{readyPlatformScore}/3</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-sm font-medium">Contact Point & Angle</p>
+              <p className="text-2xl font-bold">{contactAngleScore}/3</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-sm font-medium">Leg Drive & Shoulder Lift</p>
+              <p className="text-2xl font-bold">{legDriveShoulderScore}/3</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-sm font-medium">Follow-Through & Control</p>
+              <p className="text-2xl font-bold">{followThroughScore}/3</p>
+            </div>
           </div>
         )}
-        {!isReady && (
-          <div className="text-red-600 mt-1">
-            ⚠️ MoveNet not ready. Please refresh if libraries failed to load.
+
+        {skill === "Digging" && (
+          <div className="rounded-lg border p-4 bg-muted/50">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Score</p>
+                <p className="text-3xl font-bold">{totalScore}/12</p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-muted-foreground">Grade</p>
+                <p className="text-3xl font-bold">{grade}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!videoFile && (
+          <div className="text-xs text-muted-foreground bg-blue-50 p-3 rounded-lg">
+            Upload a video to enable analysis. Supported: most common formats.
           </div>
         )}
       </div>
