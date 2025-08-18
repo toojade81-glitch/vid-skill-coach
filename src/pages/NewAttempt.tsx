@@ -135,7 +135,8 @@ const NewAttempt = () => {
     analysisMetrics: any,
     scores: Record<string, number>,
     conf: number,
-    frames: Record<string, string>
+    capturedFrame?: string,
+    frames?: Record<string, string>
   ) => {
     console.log("📊 Analysis complete with results:", { scores, analysisMetrics, conf, frames });
     
@@ -143,12 +144,17 @@ const NewAttempt = () => {
     setAutoScores(scores);
     setFinalScores(scores);
     setConfidence(conf);
-    setRubricFrames(frames);
+    setRubricFrames(frames || {});
     
-    // Set the first available frame as the main captured frame for backward compatibility
-    const firstFrame = Object.values(frames)[0];
-    if (firstFrame) {
-      setCapturedFrame(firstFrame);
+    // Set captured frame
+    if (capturedFrame) {
+      setCapturedFrame(capturedFrame);
+    } else if (frames) {
+      // Fallback to first available frame for backward compatibility
+      const firstFrame = Object.values(frames)[0];
+      if (firstFrame) {
+        setCapturedFrame(firstFrame);
+      }
     }
     
     setStep("review");
