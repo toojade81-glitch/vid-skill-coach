@@ -24,11 +24,13 @@ const LocalVideoPlayer = ({ videoBlob, onFrameCapture, className = "", initialTi
     if (videoBlob) {
       const url = URL.createObjectURL(videoBlob);
       setVideoUrl(url);
+      setError(""); // Clear any previous errors
       console.log("🎬 Local video URL created:", url);
 
       // Cleanup function to revoke URL
       return () => {
         URL.revokeObjectURL(url);
+        setVideoUrl("");
         console.log("🗑️ Local video URL revoked");
       };
     }
@@ -74,9 +76,22 @@ const LocalVideoPlayer = ({ videoBlob, onFrameCapture, className = "", initialTi
       error: video?.error,
       errorCode: video?.error?.code,
       errorMessage: video?.error?.message,
+      event: e
     });
-    setError(`Local video playback error: ${video?.error?.message || 'Unknown error'}`);
+    
+    const errorMessages = {
+      1: 'Video loading was aborted',
+      2: 'Network error while loading video',
+      3: 'Video format not supported or corrupted',
+      4: 'Video source not suitable'
+    };
+    
+    const errorCode = video?.error?.code;
+    const errorMessage = errorCode ? errorMessages[errorCode as keyof typeof errorMessages] : 'Unknown video error';
+    
+    setError(`Video playback failed: ${errorMessage}. Please try recording in MP4 format or use a different browser.`);
     setVideoReady(false);
+    setIsPlaying(false);
   };
 
   const handleTimeUpdate = () => {
@@ -149,74 +164,100 @@ const LocalVideoPlayer = ({ videoBlob, onFrameCapture, className = "", initialTi
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  const reloadVideo = () => {
+    setError("");
+    setVideoReady(false);
+    setIsPlaying(false);
+    
+    if (videoBlob) {
+      // Force recreation of video URL
+      const url = URL.createObjectURL(videoBlob);
+      setVideoUrl(url);
+    }
+  };
+
   if (error) {
     return (
       <div className={`bg-destructive/10 border border-destructive/20 rounded-lg p-4 ${className}`}>
         <div className="text-sm text-destructive mb-3">{error}</div>
         
-        {/* Enhanced Fallback Player with Scrubbing */}
-        <div className="mt-2 space-y-3">
-          <div className="text-xs text-muted-foreground mb-1">Fallback player with scrubbing:</div>
-          
-          <div className="relative">
-            <video
-              ref={videoRef}
-              className="w-full h-32 object-cover rounded-lg border border-border"
-              onLoadedMetadata={() => {
-                const video = videoRef.current;
-                if (video && video.duration && video.duration > 0) {
-                  setDuration(video.duration);
-                  setVideoReady(true);
-                }
-              }}
-              onTimeUpdate={handleTimeUpdate}
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
-              muted
-              playsInline
-              controls={false}
-            >
-              <source src={videoUrl} type={(videoBlob as any)?.type || 'video/mp4'} />
-              Your browser does not support video playback.
-            </video>
-            <canvas ref={canvasRef} className="hidden" />
-            <div className="absolute bottom-2 right-2">
-              <Button
-                onClick={togglePlayPause}
-                size="sm"
-                variant="secondary"
-              >
-                {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              </Button>
-            </div>
-          </div>
-
-          {duration > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration)}</span>
-              </div>
-              <Slider
-                value={[currentTime]}
-                onValueChange={handleSliderChange}
-                max={duration}
-                min={0}
-                step={0.1}
-                className="w-full"
-              />
-            </div>
-          )}
-          
-          <div className="text-xs text-muted-foreground text-center">
-            Fallback mode - Scrub to select the best frame for assessment
-          </div>
+        <div className="flex gap-2 mb-3">
+          <Button onClick={reloadVideo} size="sm" variant="outline">
+            Retry Video
+          </Button>
+          <Button onClick={downloadVideo} size="sm" variant="outline">
+            <Download className="h-4 w-4 mr-1" />
+            Download Video
+          </Button>
         </div>
+        
+        {/* Enhanced Fallback Player with Scrubbing */}
+        {videoUrl && (
+          <div className="mt-2 space-y-3">
+            <div className="text-xs text-muted-foreground mb-1">Fallback player:</div>
+            
+            <div className="relative">
+              <video
+                ref={videoRef}
+                className="w-full h-32 object-cover rounded-lg border border-border"
+                onLoadedMetadata={() => {
+                  const video = videoRef.current;
+                  if (video && video.duration && video.duration > 0) {
+                    setDuration(video.duration);
+                    setVideoReady(true);
+                    setError("");
+                  }
+                }}
+                onTimeUpdate={handleTimeUpdate}
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                onError={handleVideoError}
+                muted
+                playsInline
+                controls={false}
+              >
+                <source src={videoUrl} type={(videoBlob as any)?.type || 'video/mp4'} />
+                Your browser does not support video playback.
+              </video>
+              <canvas ref={canvasRef} className="hidden" />
+              <div className="absolute bottom-2 right-2">
+                <Button
+                  onClick={togglePlayPause}
+                  size="sm"
+                  variant="secondary"
+                >
+                  {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+
+            {duration > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{formatTime(currentTime)}</span>
+                  <span>{formatTime(duration)}</span>
+                </div>
+                <Slider
+                  value={[currentTime]}
+                  onValueChange={handleSliderChange}
+                  max={duration}
+                  min={0}
+                  step={0.1}
+                  className="w-full"
+                />
+              </div>
+            )}
+            
+            <div className="text-xs text-muted-foreground text-center">
+              Fallback mode - Scrub to select the best frame for assessment
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
-  if (!videoReady) {
+  if (!videoReady || !videoUrl) {
     return (
       <div className={`space-y-3 ${className}`}>
         {/* Info panel */}
@@ -224,35 +265,37 @@ const LocalVideoPlayer = ({ videoBlob, onFrameCapture, className = "", initialTi
           <div className="text-xs text-green-800 space-y-1">
             <div>🔒 Local Mode: Video stays on your device</div>
             <div>Video Size: {(videoBlob.size / 1024 / 1024).toFixed(1)}MB</div>
-            <div>Status: Loading local video...</div>
+            <div>Status: {videoUrl ? 'Loading local video...' : 'Preparing video...'}</div>
           </div>
         </div>
 
-        <div className="relative">
-          <video
-            ref={videoRef}
-            className="w-full h-32 object-cover rounded-lg border border-border"
-            onLoadedMetadata={handleVideoLoaded}
-            onLoadedData={handleVideoLoaded}
-            onCanPlay={handleVideoLoaded}
-            onError={handleVideoError}
-            onTimeUpdate={handleTimeUpdate}
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
-            muted
-            playsInline
-            controls={false}
-            preload="metadata"
-          >
-            <source src={videoUrl} type={(videoBlob as any)?.type || 'video/mp4'} />
-          </video>
-          <canvas ref={canvasRef} className="hidden" />
-          
-          {/* Loading overlay */}
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
-            <div className="text-white text-sm">Loading local video...</div>
+        {videoUrl && (
+          <div className="relative">
+            <video
+              ref={videoRef}
+              className="w-full h-32 object-cover rounded-lg border border-border"
+              onLoadedMetadata={handleVideoLoaded}
+              onLoadedData={handleVideoLoaded}
+              onCanPlay={handleVideoLoaded}
+              onError={handleVideoError}
+              onTimeUpdate={handleTimeUpdate}
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+              muted
+              playsInline
+              controls={false}
+              preload="metadata"
+            >
+              <source src={videoUrl} type={(videoBlob as any)?.type || 'video/mp4'} />
+            </video>
+            <canvas ref={canvasRef} className="hidden" />
+            
+            {/* Loading overlay */}
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
+              <div className="text-white text-sm">Loading local video...</div>
+            </div>
           </div>
-        </div>
+        )}
         
         <div className="text-xs text-muted-foreground text-center">
           🔒 Secure local playback - video never leaves your device
