@@ -380,6 +380,11 @@ const RealMoveNetAnalyzer = ({ videoFile, skill, target = "Center", onAnalysisCo
       metrics.facingTarget = confidence;
       metrics.extensionSequence = confidence;
 
+      // Validate results before passing to callback
+      if (!metrics || !finalScores || typeof confidence !== 'number') {
+        throw new Error("Analysis completed but results are invalid");
+      }
+      
       onAnalysisComplete(metrics, finalScores, confidence, bestContactFrame, rubricFrames);
       toast.success("Real-time pose analysis complete!");
 

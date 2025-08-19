@@ -140,6 +140,15 @@ const NewAttempt = () => {
   ) => {
     console.log("📊 Analysis complete with results:", { scores, analysisMetrics, conf, frames });
     
+    // Validate analysis results to prevent undefined errors
+    if (!analysisMetrics || !scores || typeof conf !== 'number') {
+      console.error("❌ Invalid analysis results:", { analysisMetrics, scores, conf });
+      toast.error("Analysis failed: Invalid results received");
+      setIsProcessing(false);
+      setLocalProgress(0);
+      return;
+    }
+    
     setMetrics(analysisMetrics);
     setAutoScores(scores);
     setFinalScores(scores);
